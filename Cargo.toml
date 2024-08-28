@@ -1,0 +1,10 @@
+[package]
+name = "casino-buddy"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sqlx = "0.8.1"
+warp = "0.3.0"
+tracing = "0.1.26"
+tokio = { version = "1", features = ["full"] }
