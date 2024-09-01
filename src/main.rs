@@ -1,8 +1,11 @@
 use casino_buddy::run;
 
-/// Main function
 #[tokio::main]
 async fn main() {
-    println!("Starting server");
-    let _ = run().await;
+    // TODO: Add logging
+    // TODO: Print some system / config info
+    println!("Starting Casino Buddy server...");
+    if let Err(e) = run().await {
+        eprintln!("Error: {:?}", e);
+    }
 }
