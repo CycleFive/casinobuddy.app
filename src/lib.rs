@@ -38,6 +38,7 @@ impl std::error::Error for Sqlx {}
 
 /// Custom rejection handler that maps rejections into responses.
 async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
+    println!("handle_rejection");
     if err.is_not_found() {
         Ok(reply::with_status("NOT_FOUND", StatusCode::NOT_FOUND))
     } else if let Some(_e) = err.find::<Sqlx>() {
@@ -132,7 +133,8 @@ async fn get_app(
     let filter = transaction_filter(ctx).await;
     let health = warp::path!("health").map(|| "Hello, world!");
     let log = warp::log("crack-voting");
-    filter.or(health).with(log)
+    //filter.or(health).with(log)
+    health.or(filter).with(log)
 }
 
 /// Run the server.
