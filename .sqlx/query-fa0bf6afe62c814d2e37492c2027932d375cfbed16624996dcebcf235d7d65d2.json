@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT * FROM purchase WHERE user_id = $1",
+  "query": "SELECT * FROM user WHERE id = $1",
   "describe": {
     "columns": [
       {
@@ -9,24 +9,24 @@
         "type_info": "Integer"
       },
       {
-        "name": "user_id",
+        "name": "email",
         "ordinal": 1,
-        "type_info": "Integer"
+        "type_info": "Text"
       },
       {
-        "name": "casino_id",
+        "name": "username",
         "ordinal": 2,
-        "type_info": "Integer"
+        "type_info": "Text"
       },
       {
-        "name": "cost",
+        "name": "avatar",
         "ordinal": 3,
-        "type_info": "Integer"
+        "type_info": "Text"
       },
       {
-        "name": "benefit",
+        "name": "discord_id",
         "ordinal": 4,
-        "type_info": "Integer"
+        "type_info": "Text"
       },
       {
         "name": "created_at",
@@ -34,9 +34,9 @@
         "type_info": "Datetime"
       },
       {
-        "name": "notes",
+        "name": "updated_at",
         "ordinal": 6,
-        "type_info": "Text"
+        "type_info": "Datetime"
       }
     ],
     "parameters": {
@@ -46,11 +46,11 @@
       false,
       false,
       false,
+      true,
+      true,
       false,
-      false,
-      false,
-      true
+      false
     ]
   },
-  "hash": "953408eab52acb3876a74c9b67bcfb1da0bb97ed1c4fba85693b8419018a8ed1"
+  "hash": "fa0bf6afe62c814d2e37492c2027932d375cfbed16624996dcebcf235d7d65d2"
 }

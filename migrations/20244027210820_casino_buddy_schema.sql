@@ -8,20 +8,18 @@ CREATE TABLE IF NOT EXISTS casino (
     daily_limit             INTEGER NOT NULL,
     free_sweepstakes        INTEGER NOT NULL,
     prohibited_states       TEXT NOT NULL,
-    prohibited_countries    TEXT NOT NULL
+    prohibited_countries    TEXT NOT NULL,
+    created_at              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS "user" (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-    oauth_id            TEXT NOT NULL,
     email               TEXT NOT NULL,
     username            TEXT NOT NULL,
     avatar              TEXT,
     discord_id          TEXT,
-    google_id           TEXT,
-    facebook_id         TEXT,
-    accept_tos          BOOLEAN NOT NULL,
-    accept_privacy      BOOLEAN NOT NULL,
-    created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 --- Purchase data information, this is the data that will be used to calculate the user's total spend and total benefit.
@@ -36,6 +34,8 @@ CREATE TABLE IF NOT EXISTS purchase (
     FOREIGN KEY (user_id) REFERENCES "user"(id),
     FOREIGN KEY (casino_id) REFERENCES casino(id)
 );
+
+-- Remption information. The received date is the date a person got the redepemtion in their account
 CREATE TABLE IF NOT EXISTS redemption (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id         INTEGER NOT NULL,

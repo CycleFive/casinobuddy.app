@@ -52,21 +52,40 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
     }
 }
 
-/// DB struct for transactions.
+/// DB struct for purchases.
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize, PartialEq)]
 struct Purchase {
     id: i64,
     user_id: i64,
-    site_id: i64,
+    casino_id: i64,
     cost: i64,
     benefit: i64,
     created_at: chrono::NaiveDateTime,
     notes: Option<String>,
 }
 
+/// DB struct for users.
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize, PartialEq)]
+struct User {
+    id: i64,
+    email: String,
+    username: String,
+    avatar: Option<String>,
+    discord_id: Option<String>,
+    created_at: chrono::NaiveDateTime,
+    updated_at: chrono::NaiveDateTime,
+}
+
+/// Struct for the json response body for purchases.
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 struct PurchasesReplyBody {
     body: Vec<Purchase>,
+}
+
+/// Struct for the json response body for users.
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+struct UserReplyBody {
+    body: Vec<User>,
 }
 
 /// Context object for casino buddy.
@@ -93,9 +112,21 @@ impl CasinoContext {
         Ok(purchases)
     }
 
+    async fn get_user(self: &Self, user_id: i64) -> Result<Vec<User>, sqlx::Error> {
+        let user = sqlx::query_as!(User, "SELECT * FROM user WHERE id = $1", user_id)
+            .fetch_all(&*self.db)
+            .await?;
+        Ok(user)
+    }
+
     async fn process_get_purchases(self: &Self, user_id: i64) -> Result<impl Reply, Rejection> {
         let purchases = self.get_purchases(user_id).await.map_err(Sqlx)?;
         Ok(warp::reply::json(&PurchasesReplyBody { body: purchases }))
+    }
+
+    async fn process_get_user(self: &Self, user_id: i64) -> Result<impl Reply, Rejection> {
+        let user = self.get_user(user_id).await.map_err(Sqlx)?;
+        Ok(warp::reply::json(&UserReplyBody { body: user }))
     }
 }
 
@@ -125,16 +156,33 @@ async fn transaction_filter(
         .recover(handle_rejection)
 }
 
+/// Get all transactions for a user.
+async fn filter_get_user_by_id(
+    ctx: CasinoContext,
+) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
+    let context = warp::any().map(move || ctx.clone());
+    //.and(log_headers())
+    //.and(log_body())
+
+    warp::path!("user" / i64)
+        .and(warp::get())
+        .and(context)
+        .and_then(|user_id: i64, inner_ctx: CasinoContext| async move {
+            inner_ctx.clone().process_get_user(user_id).await
+        })
+        .recover(handle_rejection)
+}
+
 /// Get the routes for the server.
 async fn get_app(
     ctx: CasinoContext,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     println!("get_app");
-    let filter = transaction_filter(ctx).await;
+    let transaction_filter = transaction_filter(ctx.clone()).await;
+    let user_filter = filter_get_user_by_id(ctx).await;
     let health = warp::path!("health").map(|| "Hello, world!");
     let log = warp::log("crack-voting");
-    //filter.or(health).with(log)
-    health.or(filter).with(log)
+    health.or(transaction_filter).or(user_filter).with(log)
 }
 
 /// Run the server.
