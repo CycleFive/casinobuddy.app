@@ -20,7 +20,8 @@ Casino Buddy is an application to track, summarize and aid in responsible online
 - rustc / cargo
 ### On Linux
 ```bash
+source ./.env.example
 cargo build --release
-export DATABASE_URL=sqlite://data/casinobuddy.db
+```
 ./target/release/casinobuddy
 ```
