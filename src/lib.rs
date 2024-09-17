@@ -52,15 +52,16 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
     }
 }
 
-/// DB struct for purchases.
+/// DB struct for transactions.
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize, PartialEq)]
-struct Purchase {
+struct Transaction {
     id: i64,
     user_id: i64,
     casino_id: i64,
     cost: i64,
     benefit: i64,
     created_at: chrono::NaiveDateTime,
+    updated_at: chrono::NaiveDateTime,
     notes: Option<String>,
 }
 
@@ -76,10 +77,10 @@ struct User {
     updated_at: chrono::NaiveDateTime,
 }
 
-/// Struct for the json response body for purchases.
+/// Struct for the json response body for transactions.
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-struct PurchasesReplyBody {
-    body: Vec<Purchase>,
+struct TransactionsReplyBody {
+    body: Vec<Transaction>,
 }
 
 /// Struct for the json response body for users.
@@ -109,16 +110,16 @@ impl CasinoContext {
         Self { db: Arc::new(db) }
     }
 
-    /// Get all purchases for a user.
-    async fn get_purchases(&self, user_id: i64) -> Result<Vec<Purchase>, sqlx::Error> {
-        let purchases = sqlx::query_as!(
-            Purchase,
-            "SELECT * FROM purchase WHERE user_id = $1",
+    /// Get all transactions for a user.
+    async fn get_transactions(&self, user_id: i64) -> Result<Vec<Transaction>, sqlx::Error> {
+        let transactions = sqlx::query_as!(
+            Transaction,
+            r#"SELECT * FROM "transaction" WHERE user_id = $1"#,
             user_id
         )
         .fetch_all(&*self.db)
         .await?;
-        Ok(purchases)
+        Ok(transactions)
     }
 
     /// Get a user by their id.
@@ -169,10 +170,10 @@ impl CasinoContext {
         Ok(user_id)
     }
 
-    /// Process a request to get all purchases for a user.
-    async fn process_get_purchases(&self, user_id: i64) -> Result<impl Reply, Rejection> {
-        let purchases = self.get_purchases(user_id).await.map_err(Sqlx)?;
-        Ok(warp::reply::json(&PurchasesReplyBody { body: purchases }))
+    /// Process a request to get all transactions for a user.
+    async fn process_get_transactions(&self, user_id: i64) -> Result<impl Reply, Rejection> {
+        let transactions = self.get_transactions(user_id).await.map_err(Sqlx)?;
+        Ok(warp::reply::json(&TransactionsReplyBody { body: transactions }))
     }
 
     /// Process a request to get a user by their id.
@@ -210,11 +211,11 @@ async fn transaction_filter(
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     let context = warp::any().map(move || ctx.clone());
 
-    warp::path!("purchases" / i64)
+    warp::path!("transactions" / i64)
         .and(warp::get())
         .and(context)
         .and_then(|user_id: i64, inner_ctx: CasinoContext| async move {
-            inner_ctx.clone().process_get_purchases(user_id).await
+            inner_ctx.clone().process_get_transactions(user_id).await
         })
         .recover(handle_rejection)
 }
@@ -304,19 +305,38 @@ mod tests {
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
     #[sqlx::test(migrator = "MIGRATOR")]
-    async fn test_get_purchases(pool: SqlitePool) -> sqlx::Result<()> {
+    async fn test_get_transactions(pool: SqlitePool) -> sqlx::Result<()> {
         let ctx = CasinoContext::new(pool.clone());
-        let result = ctx.get_purchases(1).await;
-        assert!(result.is_ok());
+        let result = ctx.get_transactions(1).await;
+        match result {
+            Ok(transactions) => {
+                assert_eq!(1, transactions.len());
+                assert_eq!(1, transactions[0].id);
+            },
+            Err(e) => {
+                eprintln!("Error: {:?}", e);
+                assert!(false);
+            }
+        }
         Ok(())
     }
 
-    // #[tokio::test]
-    // async fn test_get_user() {
-    //     let ctx = CasinoContext::default();
-    //     let result = ctx.get_user(1).await;
-    //     assert!(result.is_ok());
-    // }
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn test_get_user(pool: SqlitePool) -> sqlx::Result<()> {
+        let ctx = CasinoContext::new(pool.clone());
+        let result = ctx.get_user(1).await;
+        match result {
+            Ok(user) => {
+                assert_eq!(1, user.len());
+                assert_eq!(1, user[0].id);
+            },
+            Err(e) => {
+                eprintln!("Error: {:?}", e);
+                assert!(false);
+            }
+        }
+        Ok(())
+    }
 
     // #[tokio::test]
     // async fn test_get_app() {

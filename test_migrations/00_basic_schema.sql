@@ -4,14 +4,16 @@ CREATE TABLE IF NOT EXISTS casino (
     name                    TEXT NOT NULL,
     url                     TEXT NOT NULL,
     description             TEXT NOT NULL,
-    daily_bonus             INTEGER NOT NULL,
-    daily_limit             INTEGER NOT NULL,
-    free_sweepstakes        INTEGER NOT NULL,
-    prohibited_states       TEXT NOT NULL,
-    prohibited_countries    TEXT NOT NULL,
     created_at              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+-- Going to need another table for the metadata of the casino in order to maintain flexibility
+--   daily_bonus             INTEGER NOT NULL,
+--   daily_limit             INTEGER NOT NULL,
+--   free_sweepstakes        BOOLEAN NOT NULL,
+--   prohibited_states       TEXT,
+--   prohibited_countries    TEXT,
+ 
 CREATE TABLE IF NOT EXISTS "user" (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     email               TEXT NOT NULL,
@@ -22,14 +24,15 @@ CREATE TABLE IF NOT EXISTS "user" (
     updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
---- Purchase data information, this is the data that will be used to calculate the user's total spend and total benefit.
-CREATE TABLE IF NOT EXISTS purchase (
+--- Transaction data information, this is the data that will be used to calculate the user's total spend and total benefit.
+CREATE TABLE IF NOT EXISTS "transaction" (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id         INTEGER NOT NULL,
     casino_id       INTEGER NOT NULL,
     cost            INTEGER NOT NULL,
     benefit         INTEGER NOT NULL,
     created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     notes           TEXT,
     FOREIGN KEY (user_id) REFERENCES "user"(id),
     FOREIGN KEY (casino_id) REFERENCES casino(id)
