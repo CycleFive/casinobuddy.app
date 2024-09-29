@@ -1,39 +1,39 @@
 use sqlx::SqlitePool;
-use std::{convert::Infallible, sync::Arc};
-use warp::{http::StatusCode, reject::Rejection, reply, Filter, Reply};
+use std::{convert::Infallible, sync::Arc, fmt::Display};
+use warp::{http::StatusCode, reject::Reject, reject::Rejection, reply, Filter, Reply};
 
 /// Custom error type for unauthorized requests.
 #[derive(Debug)]
 pub struct Unauthorized;
 
 /// Implement the [`Reject`] trait for [`Unauthorized`].
-impl warp::reject::Reject for Unauthorized {}
+impl Reject for Unauthorized {}
 
 /// Implement the [`Display`] trait for [`Unauthorized`].
-impl std::fmt::Display for Unauthorized {
+impl Display for Unauthorized {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("Unauthorized")
     }
 }
 
-/// Implement the [`Error`] trait for [`Unauthorized`].
+/// Implement the [`std::error::Error`] trait for [`Unauthorized`].
 impl std::error::Error for Unauthorized {}
 
 /// Custom error type for sqlx errors.
 #[derive(Debug)]
 pub struct Sqlx(pub sqlx::Error);
 
-/// Implement the [`Reject`] trait for [`Sqlx`].
+/// Implement the [`warp::reject::Reject`] trait for [`Sqlx`].
 impl warp::reject::Reject for Sqlx {}
 
-/// Implement the [`Display`] trait for [`Sqlx`].
+/// Implement the [`std::fmt::Display`] trait for [`Sqlx`].
 impl std::fmt::Display for Sqlx {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0.to_string())
     }
 }
 
-/// Implement the [`Error`] trait for [`Sqlx`].
+/// Implement the [`std::error::Error`] trait for [`Sqlx`].
 impl std::error::Error for Sqlx {}
 
 /// Custom rejection handler that maps rejections into responses.
@@ -63,6 +63,17 @@ struct Transaction {
     created_at: chrono::NaiveDateTime,
     updated_at: chrono::NaiveDateTime,
     notes: Option<String>,
+}
+
+/// DB struct for redemptions.
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize, PartialEq)]
+struct Redemption {
+    id: i64,
+    user_id: i64,
+    casino_id: i64,
+    amount: i64,
+    created_at: chrono::NaiveDateTime,
+    received_at: Option<chrono::NaiveDateTime>,
 }
 
 /// DB struct for users.
@@ -103,7 +114,7 @@ pub struct CBUserId {
     id: i64,
 }
 
-/// Implementation for `[CasinoContext]
+/// Implementation for [CasinoContext]
 impl CasinoContext {
     /// Create a new instance of `[CasinoContext]` given a database pool.
     fn new(db: SqlitePool) -> Self {
@@ -170,6 +181,32 @@ impl CasinoContext {
         Ok(user_id)
     }
 
+    /// Create a new transaction, these are the purchases of coins from the casinos.
+    async fn create_transaction(
+        &self,
+        user_id: i64,
+        casino_id: i64,
+        cost: i64,
+        benefit: i64,
+        notes: Option<String>,
+    ) -> Result<Transaction, sqlx::Error> {
+        let transaction = sqlx::query_as!(
+            Transaction,
+            r#"INSERT INTO "transaction" (user_id, casino_id, cost, benefit, notes) VALUES ($1, $2, $3, $4, $5) RETURNING *"#,
+            user_id,
+            casino_id,
+            cost,
+            benefit,
+            notes
+        )
+        .fetch_one(&*self.db)
+        .await?;
+        Ok(transaction)
+    }
+
+    /// Create a redemption entry.
+    
+
     /// Process a request to get all transactions for a user.
     async fn process_get_transactions(&self, user_id: i64) -> Result<impl Reply, Rejection> {
         let transactions = self.get_transactions(user_id).await.map_err(Sqlx)?;
@@ -193,6 +230,19 @@ impl CasinoContext {
             .map_err(Sqlx)?;
         let user_id = self.create_user(email, username).await.map_err(Sqlx)?;
         Ok(warp::reply::json(&user_id))
+    }
+
+    /// Process a request to create a new transaction.
+    async fn process_put_transaction(
+        &self,
+        user_id: i64,
+        casino_id: i64,
+        cost: i64,
+        benefit: i64,
+        notes: &Option<String>,
+    ) -> Result<impl Reply, Rejection> {
+        let transaction = self.create_transaction(user_id, casino_id, cost, benefit, notes.clone()).await.map_err(Sqlx)?;
+        Ok(warp::reply::json(&transaction))
     }
 }
 
@@ -235,6 +285,48 @@ async fn get_user_filter(
         .recover(handle_rejection)
 }
 
+
+/// Struct for the json query body for create adding a transaction.
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+struct TransactionCreate {
+    user_id: i64,
+    casino_id: i64,
+    cost: i64,
+    benefit: i64,
+    notes: Option<String>,
+}
+
+/// Filter to the transaction create params.
+fn with_transaction_create_params(
+    params: TransactionCreate,
+) -> impl Filter<Extract = (TransactionCreate,), Error = Infallible> + Clone {
+    warp::any().map(move || params.clone())
+}
+
+/// Get all transactions for a user.
+async fn transaction_put_filter(
+    ctx: CasinoContext,
+) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
+    let context = warp::any().map(move || ctx.clone());
+
+    warp::path!("transactions")
+        .and(warp::put())
+        .and(context)
+        .and(warp::body::json())
+        .and_then(
+            |inner_ctx: CasinoContext, params: TransactionCreate| async move {
+                with_transaction_create_params(params.clone());
+                inner_ctx
+                    .clone()
+                    .process_put_transaction(params.user_id, params.casino_id, params.cost, params.benefit, &params.notes)
+                    .await
+            },
+        )
+        .recover(handle_rejection)
+}
+
+
+
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 struct UserCreate {
     email: String,
@@ -276,12 +368,14 @@ async fn get_app(
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     println!("building filters!");
     let transaction_filter = transaction_filter(ctx.clone()).await;
+    let put_transaction_filter = transaction_put_filter(ctx.clone()).await;
     let post_user_filter = post_user_filter(ctx.clone()).await;
     let get_user_filter = get_user_filter(ctx).await;
     let health = warp::path!("health").map(|| "Hello, world!");
     let log = warp::log("casino-buddy");
     health
         .or(transaction_filter)
+        .or(put_transaction_filter)
         .or(post_user_filter)
         .or(get_user_filter)
         .with(log)
@@ -338,11 +432,52 @@ mod tests {
         Ok(())
     }
 
-    // #[tokio::test]
-    // async fn test_get_app() {
-    //     let ctx = CasinoContext::default();
-    //     let app = get_app(ctx).await;
-    //     let response = warp::test::request().path("/health").reply(&app).await;
-    //     assert_eq!(response.status(), StatusCode::OK);
-    // }
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn test_check_username_email(pool: SqlitePool) -> sqlx::Result<()> {
+        let ctx = CasinoContext::new(pool.clone());
+        let result = ctx.check_username_email("testuser", "testemail@test.test").await;
+        match result {
+            Ok(_) => {
+                assert!(true);
+            },
+            Err(e) => {
+                eprintln!("Error: {:?}", e);
+                assert!(false);
+            }
+        }
+        Ok(())
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn test_create_user(pool: SqlitePool) -> sqlx::Result<()> {
+        let ctx = CasinoContext::new(pool.clone());
+        let result = ctx.create_user("email", "username").await;
+        match result {
+            Ok(user_id) => {
+                assert_eq!(2, user_id.id);
+            },
+            Err(e) => {
+                eprintln!("Error: {:?}", e);
+                assert!(false);
+            }
+        }
+        Ok(())
+    }
+
+    #[sqlx::test(migrator = "MIGRATOR")]
+    async fn test_create_transaction(pool: SqlitePool) -> sqlx::Result<()> {
+        let ctx = CasinoContext::new(pool.clone());
+        let result = ctx.create_transaction(1, 1, 1, 1, None).await;
+        match result {
+            Ok(transaction) => {
+                assert_eq!(2, transaction.id);
+            },
+            Err(e) => {
+                eprintln!("Error: {:?}", e);
+                assert!(false);
+            }
+        }
+        Ok(())
+    }
+
 }

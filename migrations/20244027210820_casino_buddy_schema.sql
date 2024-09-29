@@ -1,6 +1,6 @@
 --- This is probably going to have a lot more in it.
 CREATE TABLE IF NOT EXISTS casino (
-    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    id                      INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     name                    TEXT NOT NULL,
     url                     TEXT NOT NULL,
     description             TEXT NOT NULL,
@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS casino (
 --   prohibited_countries    TEXT,
  
 CREATE TABLE IF NOT EXISTS "user" (
-    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    id                  INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     email               TEXT NOT NULL,
     username            TEXT NOT NULL,
     avatar              TEXT,
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS "user" (
 
 --- Transaction data information, this is the data that will be used to calculate the user's total spend and total benefit.
 CREATE TABLE IF NOT EXISTS "transaction" (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    id              INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     user_id         INTEGER NOT NULL,
     casino_id       INTEGER NOT NULL,
     cost            INTEGER NOT NULL,
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS "transaction" (
 
 -- Remption information. The received date is the date a person got the redepemtion in their account
 CREATE TABLE IF NOT EXISTS redemption (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    id              INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     user_id         INTEGER NOT NULL,
     casino_id       INTEGER NOT NULL,
     amount          NUMERIC NOT NULL,
@@ -49,8 +49,10 @@ CREATE TABLE IF NOT EXISTS redemption (
     FOREIGN KEY (user_id) REFERENCES "user"(id),
     FOREIGN KEY (casino_id) REFERENCES casino(id)
 );
+
+--- User casino information, links the user to each casino they have an account with.
 CREATE TABLE IF NOT EXISTS user_casino (
-    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    id                  INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     user_id             INTEGER NOT NULL,
     casino_id           INTEGER NOT NULL,
     is_vip              BOOLEAN NOT NULL,
@@ -63,7 +65,7 @@ CREATE TABLE IF NOT EXISTS user_casino (
 
 -- TODO: Replace the amount_other1, amount_other2, amount_other3, amount_other4 with a more generic approach.
 CREATE TABLE IF NOT EXISTS daily_bonus (
-    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    id                  INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     user_id             INTEGER NOT NULL,
     casino_id           INTEGER NOT NULL,
     amount_sc           INTEGER NOT NULL,
