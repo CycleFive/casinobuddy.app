@@ -1,6 +1,6 @@
 use sqlx::SqlitePool;
-use std::{convert::Infallible, sync::Arc, fmt::Display};
-use warp::{http::StatusCode, reject::Reject, reject::Rejection, reply, Filter, Reply};
+use std::{convert::Infallible, fmt::Display, sync::Arc};
+use warp::{http::StatusCode, reject::{Reject, Rejection}, reply, Filter, Reply};
 
 /// Custom error type for unauthorized requests.
 #[derive(Debug)]
@@ -39,6 +39,7 @@ impl std::error::Error for Sqlx {}
 /// Custom rejection handler that maps rejections into responses.
 async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
     println!("handle_rejection");
+    println!("{:?}", err);
     if err.is_not_found() {
         Ok(reply::with_status("NOT_FOUND", StatusCode::NOT_FOUND))
     } else if let Some(_e) = err.find::<Sqlx>() {
@@ -54,50 +55,50 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
 
 /// DB struct for transactions.
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize, PartialEq)]
-struct Transaction {
-    id: i64,
-    user_id: i64,
-    casino_id: i64,
-    cost: i64,
-    benefit: i64,
-    created_at: chrono::NaiveDateTime,
-    updated_at: chrono::NaiveDateTime,
-    notes: Option<String>,
+pub struct Transaction {
+    pub id: i64,
+    pub user_id: i64,
+    pub casino_id: i64,
+    pub cost: i64,
+    pub benefit: i64,
+    pub created_at: chrono::NaiveDateTime,
+    pub updated_at: chrono::NaiveDateTime,
+    pub notes: Option<String>,
 }
 
 /// DB struct for redemptions.
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize, PartialEq)]
-struct Redemption {
-    id: i64,
-    user_id: i64,
-    casino_id: i64,
-    amount: i64,
-    created_at: chrono::NaiveDateTime,
-    received_at: Option<chrono::NaiveDateTime>,
+pub struct Redemption {
+    pub id: i64,
+    pub user_id: i64,
+    pub casino_id: i64,
+    pub amount: i64,
+    pub created_at: chrono::NaiveDateTime,
+    pub received_at: Option<chrono::NaiveDateTime>,
 }
 
 /// DB struct for users.
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize, PartialEq)]
-struct User {
-    id: i64,
-    email: String,
-    username: String,
-    avatar: Option<String>,
-    discord_id: Option<String>,
-    created_at: chrono::NaiveDateTime,
-    updated_at: chrono::NaiveDateTime,
+pub struct User {
+    pub id: i64,
+    pub email: String,
+    pub username: String,
+    pub avatar: Option<String>,
+    pub discord_id: Option<String>,
+    pub created_at: chrono::NaiveDateTime,
+    pub updated_at: chrono::NaiveDateTime,
 }
 
 /// Struct for the json response body for transactions.
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-struct TransactionsReplyBody {
-    body: Vec<Transaction>,
+pub struct TransactionsReplyBody {
+    pub body: Vec<Transaction>,
 }
 
 /// Struct for the json response body for users.
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
-struct UserReplyBody {
-    body: Vec<User>,
+pub struct UserReplyBody {
+    pub body: Vec<User>,
 }
 
 /// Context object for casino buddy.
@@ -111,7 +112,7 @@ struct CasinoContext {
 /// Custom type for a user id.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CBUserId {
-    id: i64,
+    pub id: i64,
 }
 
 /// Implementation for [CasinoContext]
@@ -124,12 +125,23 @@ impl CasinoContext {
     /// Get all transactions for a user.
     async fn get_transactions(&self, user_id: i64) -> Result<Vec<Transaction>, sqlx::Error> {
         let transactions = sqlx::query_as!(
-            Transaction,
-            r#"SELECT * FROM "transaction" WHERE user_id = $1"#,
-            user_id
-        )
-        .fetch_all(&*self.db)
-        .await?;
+                Transaction,
+                r#"SELECT * FROM transaction WHERE user_id = $1"#,
+                user_id
+            )
+            .fetch_all(&*self.db)
+            .await?;
+        Ok(transactions)
+    }
+
+    /// Get all transactions for a user.
+    async fn get_transactions_all(&self) -> Result<Vec<Transaction>, sqlx::Error> {
+        let transactions = sqlx::query_as!(
+                Transaction,
+                r#"SELECT * FROM transaction ORDER BY created_at desc"#,
+            )
+            .fetch_all(&*self.db)
+            .await?;
         Ok(transactions)
     }
 
@@ -167,6 +179,7 @@ impl CasinoContext {
 
     /// Create a new user.
     async fn create_user(&self, email: &str, username: &str) -> Result<CBUserId, sqlx::Error> {
+        tracing::trace!("Creating user with email: {} and username: {}", email, username);
         // This shouldn't fail because we don't have any constraints on the email or username.
         // Do we want to constrain these in the database?
         // Should be checking for existing users with the same email or username?
@@ -204,11 +217,10 @@ impl CasinoContext {
         Ok(transaction)
     }
 
-    /// Create a redemption entry.
-    
+    //TODO: Create a redemption entry.
 
     /// Process a request to get all transactions for a user.
-    async fn process_get_transactions(&self, user_id: i64) -> Result<impl Reply, Rejection> {
+    async fn process_get_transaction(&self, user_id: i64) -> Result<impl Reply, Rejection> {
         let transactions = self.get_transactions(user_id).await.map_err(Sqlx)?;
         Ok(warp::reply::json(&TransactionsReplyBody { body: transactions }))
     }
@@ -242,45 +254,52 @@ impl CasinoContext {
         notes: &Option<String>,
     ) -> Result<impl Reply, Rejection> {
         let transaction = self.create_transaction(user_id, casino_id, cost, benefit, notes.clone()).await.map_err(Sqlx)?;
-        Ok(warp::reply::json(&transaction))
+        Ok(warp::reply::with_status(warp::reply::json(&transaction), StatusCode::CREATED))
     }
 }
 
 /// Default object for `[CasinoContext]`
 impl Default for CasinoContext {
     fn default() -> Self {
-        let db: SqlitePool = sqlx::SqlitePool::connect_lazy("sqlite::memory")
+        // Try to get the database from the environment.
+        let url = match std::env::var("DATABASE_URL") {
+            Ok(val) => val,
+            Err(_) => "sqlite::memory".to_string(),
+        };
+        let db: SqlitePool = sqlx::SqlitePool::connect_lazy(&url)
             .expect("Failed to connect to database");
         Self::new(db)
     }
 }
 
 /// Get all transactions for a user.
-async fn transaction_filter(
-    ctx: CasinoContext,
-) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
+async fn get_transaction_filter(
+    ctx: &CasinoContext,
+) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone + '_ {
     let context = warp::any().map(move || ctx.clone());
 
-    warp::path!("transactions" / i64)
+    warp::path!("transaction" / u64)
         .and(warp::get())
         .and(context)
-        .and_then(|user_id: i64, inner_ctx: CasinoContext| async move {
-            inner_ctx.clone().process_get_transactions(user_id).await
+        .and_then(|user_id: u64, inner_ctx: CasinoContext| async move {
+            println!("Getting transactions with user_id: {}", user_id);
+            inner_ctx.process_get_transaction(user_id as i64).await
         })
         .recover(handle_rejection)
 }
 
 /// Get a user by their id.
 async fn get_user_filter(
-    ctx: CasinoContext,
-) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
+    ctx: &CasinoContext,
+) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone + '_ {
     let context = warp::any().map(move || ctx.clone());
 
-    warp::path!("user" / i64)
+    warp::path!("user" / u64)
         .and(warp::get())
         .and(context)
-        .and_then(|user_id: i64, inner_ctx: CasinoContext| async move {
-            inner_ctx.clone().process_get_user(user_id).await
+        .and_then(|user_id: u64, inner_ctx: CasinoContext| async move {
+            println!("Getting user with id: {}", user_id);
+            inner_ctx.process_get_user(user_id as i64).await
         })
         .recover(handle_rejection)
 }
@@ -309,12 +328,12 @@ async fn transaction_put_filter(
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     let context = warp::any().map(move || ctx.clone());
 
-    warp::path!("transactions")
-        .and(warp::put())
-        .and(context)
+    warp::path!("transaction")
+        .and(warp::post())
         .and(warp::body::json())
+        .and(context)
         .and_then(
-            |inner_ctx: CasinoContext, params: TransactionCreate| async move {
+            |params: TransactionCreate, inner_ctx: CasinoContext| async move {
                 with_transaction_create_params(params.clone());
                 inner_ctx
                     .clone()
@@ -337,6 +356,7 @@ struct UserCreate {
 fn with_user_create_params(
     params: UserCreate,
 ) -> impl Filter<Extract = (UserCreate,), Error = Infallible> + Clone {
+//     warp::body::content_length_limit(1024 * 16).and(warp::body::json())
     warp::any().map(move || params.clone())
 }
 
@@ -362,32 +382,41 @@ async fn post_user_filter(
         .recover(handle_rejection)
 }
 
+// fn json_body() -> impl Filter<Extract = (Item,), Error = warp::Rejection> + Clone {
+//     // When accepting a body, we want a JSON body
+//     // (and to reject huge payloads)...
+//     warp::body::content_length_limit(1024 * 16).and(warp::body::json())
+// }
+
 /// Get the routes for the server.
 async fn get_app(
-    ctx: CasinoContext,
-) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
+    ctx: &CasinoContext,
+) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone + '_ {
     println!("building filters!");
-    let transaction_filter = transaction_filter(ctx.clone()).await;
-    let put_transaction_filter = transaction_put_filter(ctx.clone()).await;
-    let post_user_filter = post_user_filter(ctx.clone()).await;
-    let get_user_filter = get_user_filter(ctx).await;
+    // let put_transaction_filter = transaction_put_filter(ctx.clone()).await;
+    // let post_user_filter = post_user_filter(ctx.clone()).await;
+    let get_transaction_filter = get_transaction_filter(&ctx).await;
+    let get_user_filter = get_user_filter(&ctx).await;
     let health = warp::path!("health").map(|| "Hello, world!");
-    let log = warp::log("casino-buddy");
+    let log = warp::log("casino-buddy::api");
+
     health
-        .or(transaction_filter)
-        .or(put_transaction_filter)
-        .or(post_user_filter)
         .or(get_user_filter)
+        .or(get_transaction_filter)
+        //.or(post_user_filter)
+        // .or(put_transaction_filter)
         .with(log)
 }
 
 /// Run the server.
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let ctx = CasinoContext::default(); //Box::leak(Box::new(VotingContext::new().await));
+    // let ctx = CasinoContext::default(); //Box::leak(Box::new(VotingContext::new().await));
+    let ctx = Box::leak(Box::new(CasinoContext::default()));
     let app = get_app(ctx).await;
+    let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 3030));
 
-    println!("Starting server on");
-    warp::serve(app).run(([0, 0, 0, 0], 3030)).await;
+    println!("Starting server on {:?}", addr);
+    warp::serve(app).run(addr).await;
 
     Ok(())
 }
