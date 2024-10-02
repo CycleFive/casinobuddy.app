@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT * FROM \"transaction\"",
+  "query": "SELECT * FROM \"transaction\" ORDER BY created_at desc",
   "describe": {
     "columns": [
       {
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "14359966858fc9a8a2015d2cae4fa403de5b2abf511757fad7af19ccce0e6ddb"
+  "hash": "b5d5ab5c73c31b2806e53682c1fd5d4ded5fb0a650fd5760a4d754ca445af96b"
 }

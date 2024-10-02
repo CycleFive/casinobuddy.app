@@ -126,7 +126,7 @@ impl CasinoContext {
     async fn get_transactions(&self, user_id: i64) -> Result<Vec<Transaction>, sqlx::Error> {
         let transactions = sqlx::query_as!(
                 Transaction,
-                r#"SELECT * FROM transaction WHERE user_id = $1"#,
+                r#"SELECT * FROM "transaction" WHERE user_id = $1"#,
                 user_id
             )
             .fetch_all(&*self.db)
@@ -138,7 +138,7 @@ impl CasinoContext {
     async fn get_transactions_all(&self) -> Result<Vec<Transaction>, sqlx::Error> {
         let transactions = sqlx::query_as!(
                 Transaction,
-                r#"SELECT * FROM transaction ORDER BY created_at desc"#,
+                r#"SELECT * FROM "transaction" ORDER BY created_at desc"#,
             )
             .fetch_all(&*self.db)
             .await?;
@@ -221,12 +221,14 @@ impl CasinoContext {
 
     /// Process a request to get all transactions for a user.
     async fn process_get_transaction(&self, user_id: i64) -> Result<impl Reply, Rejection> {
+        println!("Getting transactions with user_id: {}", user_id);
         let transactions = self.get_transactions(user_id).await.map_err(Sqlx)?;
         Ok(warp::reply::json(&TransactionsReplyBody { body: transactions }))
     }
 
     /// Process a request to get a user by their id.
     async fn process_get_user(&self, user_id: i64) -> Result<impl Reply, Rejection> {
+        println!("Getting user with id: {}", user_id);
         let user = self.get_user(user_id).await.map_err(Sqlx)?;
         Ok(warp::reply::json(&UserReplyBody { body: user }))
     }
@@ -274,8 +276,8 @@ impl Default for CasinoContext {
 
 /// Get all transactions for a user.
 async fn get_transaction_filter(
-    ctx: &CasinoContext,
-) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone + '_ {
+    ctx: CasinoContext,
+) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     let context = warp::any().map(move || ctx.clone());
 
     warp::path!("transaction" / u64)
@@ -290,8 +292,8 @@ async fn get_transaction_filter(
 
 /// Get a user by their id.
 async fn get_user_filter(
-    ctx: &CasinoContext,
-) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone + '_ {
+    ctx: CasinoContext,
+) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     let context = warp::any().map(move || ctx.clone());
 
     warp::path!("user" / u64)
@@ -390,19 +392,19 @@ async fn post_user_filter(
 
 /// Get the routes for the server.
 async fn get_app(
-    ctx: &CasinoContext,
-) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone + '_ {
+    ctx: CasinoContext,
+) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     println!("building filters!");
     // let put_transaction_filter = transaction_put_filter(ctx.clone()).await;
     // let post_user_filter = post_user_filter(ctx.clone()).await;
-    let get_transaction_filter = get_transaction_filter(&ctx).await;
-    let get_user_filter = get_user_filter(&ctx).await;
+    let get_transaction_filter = get_transaction_filter(ctx.clone()).await;
+    let get_user_filter = get_user_filter(ctx).await;
     let health = warp::path!("health").map(|| "Hello, world!");
     let log = warp::log("casino-buddy::api");
 
     health
-        .or(get_user_filter)
         .or(get_transaction_filter)
+        //.or(get_user_filter)
         //.or(post_user_filter)
         // .or(put_transaction_filter)
         .with(log)
@@ -412,7 +414,7 @@ async fn get_app(
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // let ctx = CasinoContext::default(); //Box::leak(Box::new(VotingContext::new().await));
     let ctx = Box::leak(Box::new(CasinoContext::default()));
-    let app = get_app(ctx).await;
+    let app = get_app(ctx.clone()).await;
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 3030));
 
     println!("Starting server on {:?}", addr);
