@@ -398,7 +398,7 @@ async fn get_app(
     // let put_transaction_filter = transaction_put_filter(ctx.clone()).await;
     // let post_user_filter = post_user_filter(ctx.clone()).await;
     let get_transaction_filter = get_transaction_filter(ctx.clone()).await;
-    let get_user_filter = get_user_filter(ctx).await;
+    let _get_user_filter = get_user_filter(ctx).await;
     let health = warp::path!("health").map(|| "Hello, world!");
     let log = warp::log("casino-buddy::api");
 

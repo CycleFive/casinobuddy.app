@@ -1,0 +1,2 @@
+# 20241002
+- Added another sql migration file. Still need the summary view / table, summaries on redemptions and spend, and play sessions.
