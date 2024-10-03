@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT * FROM user WHERE id = $1",
+  "query": "SELECT * FROM \"user\" WHERE id = $1",
   "describe": {
     "columns": [
       {
@@ -52,5 +52,5 @@
       false
     ]
   },
-  "hash": "fa0bf6afe62c814d2e37492c2027932d375cfbed16624996dcebcf235d7d65d2"
+  "hash": "0328176ec0c66942bf7c518fe10dd928cbe3fcb229c34e3d14b5e892822da4c7"
 }

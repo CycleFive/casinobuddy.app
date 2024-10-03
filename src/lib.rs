@@ -1,3 +1,4 @@
+use tracing_subscriber::fmt::format::FmtSpan;
 use sqlx::SqlitePool;
 use std::{convert::Infallible, fmt::Display, sync::Arc};
 use warp::{http::StatusCode, reject::{Reject, Rejection}, reply, Filter, Reply};
@@ -38,8 +39,8 @@ impl std::error::Error for Sqlx {}
 
 /// Custom rejection handler that maps rejections into responses.
 async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
-    println!("handle_rejection");
-    println!("{:?}", err);
+    tracing::warn!("handle_rejection");
+    tracing::warn!("{:?}", err);
     if err.is_not_found() {
         Ok(reply::with_status("NOT_FOUND", StatusCode::NOT_FOUND))
     } else if let Some(_e) = err.find::<Sqlx>() {
@@ -147,7 +148,7 @@ impl CasinoContext {
 
     /// Get a user by their id.
     async fn get_user(&self, user_id: i64) -> Result<Vec<User>, sqlx::Error> {
-        let user = sqlx::query_as!(User, "SELECT * FROM user WHERE id = $1", user_id)
+        let user = sqlx::query_as!(User, r#"SELECT * FROM "user" WHERE id = $1"#, user_id)
             .fetch_all(&*self.db)
             .await?;
         Ok(user)
@@ -158,7 +159,7 @@ impl CasinoContext {
         // We are entirely using the Errors to communicate what has happened here.
         // I think this is the idiomatic way to do this in Rust, since they are also
         // error states.
-        let matches = sqlx::query!("SELECT COUNT(*) as cnt FROM user WHERE email = $1", email)
+        let matches = sqlx::query!(r#"SELECT COUNT(*) as cnt FROM "user" WHERE email = $1"#, email)
             .fetch_one(&*self.db)
             .await?;
         if matches.cnt > 0 {
@@ -221,14 +222,14 @@ impl CasinoContext {
 
     /// Process a request to get all transactions for a user.
     async fn process_get_transaction(&self, user_id: i64) -> Result<impl Reply, Rejection> {
-        println!("Getting transactions with user_id: {}", user_id);
+        tracing::info!("Getting transactions with user_id: {}", user_id);
         let transactions = self.get_transactions(user_id).await.map_err(Sqlx)?;
         Ok(warp::reply::json(&TransactionsReplyBody { body: transactions }))
     }
 
     /// Process a request to get a user by their id.
     async fn process_get_user(&self, user_id: i64) -> Result<impl Reply, Rejection> {
-        println!("Getting user with id: {}", user_id);
+        tracing::info!("Getting user with id: {}", user_id);
         let user = self.get_user(user_id).await.map_err(Sqlx)?;
         Ok(warp::reply::json(&UserReplyBody { body: user }))
     }
@@ -284,7 +285,7 @@ async fn get_transaction_filter(
         .and(warp::get())
         .and(context)
         .and_then(|user_id: u64, inner_ctx: CasinoContext| async move {
-            println!("Getting transactions with user_id: {}", user_id);
+            tracing::info!("Getting transactions with user_id: {}", user_id);
             inner_ctx.process_get_transaction(user_id as i64).await
         })
         .recover(handle_rejection)
@@ -300,7 +301,7 @@ async fn get_user_filter(
         .and(warp::get())
         .and(context)
         .and_then(|user_id: u64, inner_ctx: CasinoContext| async move {
-            println!("Getting user with id: {}", user_id);
+            tracing::info!("Getting user with id: {}", user_id);
             inner_ctx.process_get_user(user_id as i64).await
         })
         .recover(handle_rejection)
@@ -394,24 +395,39 @@ async fn post_user_filter(
 async fn get_app(
     ctx: CasinoContext,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    println!("building filters!");
+    tracing::info!("building filters!");
     // let put_transaction_filter = transaction_put_filter(ctx.clone()).await;
     // let post_user_filter = post_user_filter(ctx.clone()).await;
     let get_transaction_filter = get_transaction_filter(ctx.clone()).await;
-    let _get_user_filter = get_user_filter(ctx).await;
+    let get_user_filter = get_user_filter(ctx).await;
     let health = warp::path!("health").map(|| "Hello, world!");
-    let log = warp::log("casino-buddy::api");
+    // let log = warp::log("casino_buddy::api");
 
     health
         .or(get_transaction_filter)
-        //.or(get_user_filter)
-        //.or(post_user_filter)
+        .or(get_user_filter)
+        .with(warp::trace::request())
+        // .or(post_user_filter)
         // .or(put_transaction_filter)
-        .with(log)
+        // .with(log)
 }
+
 
 /// Run the server.
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "tracing=info,warp=debug".to_owned());
+
+    // Configure the default `tracing` subscriber.
+    // The `fmt` subscriber from the `tracing-subscriber` crate logs `tracing`
+    // events to stdout. Other subscribers are available for integrating with
+    // distributed tracing systems such as OpenTelemetry.
+    tracing_subscriber::fmt()
+        // Use the filter we built above to determine which traces to record.
+        .with_env_filter(filter)
+        // Record an event when each span closes. This can be used to time our
+        // routes' durations!
+        .with_span_events(FmtSpan::CLOSE)
+        .init();
     // let ctx = CasinoContext::default(); //Box::leak(Box::new(VotingContext::new().await));
     let ctx = Box::leak(Box::new(CasinoContext::default()));
     let app = get_app(ctx.clone()).await;
