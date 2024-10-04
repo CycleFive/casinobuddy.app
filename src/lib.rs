@@ -1,24 +1,9 @@
 use tracing_subscriber::fmt::format::FmtSpan;
 use sqlx::SqlitePool;
-use std::{convert::Infallible, fmt::Display, sync::Arc};
-use warp::{http::StatusCode, reject::{Reject, Rejection}, reply, Filter, Reply};
+use std::{convert::Infallible, sync::Arc};
+use warp::{http::StatusCode, reject::Rejection, reply, Filter, Reply};
 
-/// Custom error type for unauthorized requests.
-#[derive(Debug)]
-pub struct Unauthorized;
-
-/// Implement the [`Reject`] trait for [`Unauthorized`].
-impl Reject for Unauthorized {}
-
-/// Implement the [`Display`] trait for [`Unauthorized`].
-impl Display for Unauthorized {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Unauthorized")
-    }
-}
-
-/// Implement the [`std::error::Error`] trait for [`Unauthorized`].
-impl std::error::Error for Unauthorized {}
+pub mod error;
 
 /// Custom error type for sqlx errors.
 #[derive(Debug)]
@@ -42,13 +27,14 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
     tracing::warn!("handle_rejection");
     tracing::warn!("{:?}", err);
     if err.is_not_found() {
-        Ok(reply::with_status("NOT_FOUND", StatusCode::NOT_FOUND))
-    } else if let Some(_e) = err.find::<Sqlx>() {
-        Ok(reply::with_status("BAD_REQUEST", StatusCode::BAD_REQUEST))
+        Ok(reply::with_status(warp::reply::json( &error::NotFound), StatusCode::NOT_FOUND))
+    } else if let Some(e) = err.find::<Sqlx>() {
+        tracing::error!("sqlx error: {:?}", e);
+        Ok(reply::with_status(warp::reply::json(&error::BadRequest), StatusCode::BAD_REQUEST))
     } else {
         eprintln!("unhandled rejection: {:?}", err);
         Ok(reply::with_status(
-            "INTERNAL_SERVER_ERROR",
+        warp::reply::json(&error::InternalServerError),
             StatusCode::INTERNAL_SERVER_ERROR,
         ))
     }
@@ -298,13 +284,13 @@ async fn get_user_filter(
     let context = warp::any().map(move || ctx.clone());
 
     warp::path!("user" / u64)
-        .and(warp::get())
         .and(context)
+        .and(warp::get())
         .and_then(|user_id: u64, inner_ctx: CasinoContext| async move {
             tracing::info!("Getting user with id: {}", user_id);
             inner_ctx.process_get_user(user_id as i64).await
         })
-        .recover(handle_rejection)
+        //.recover(handle_rejection)
 }
 
 
@@ -326,7 +312,7 @@ fn with_transaction_create_params(
 }
 
 /// Get all transactions for a user.
-async fn transaction_put_filter(
+async fn transaction_post_filter(
     ctx: CasinoContext,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     let context = warp::any().map(move || ctx.clone());
@@ -375,6 +361,7 @@ async fn post_user_filter(
         .and(warp::body::json())
         .and_then(
             |inner_ctx: CasinoContext, user_create: UserCreate| async move {
+                tracing::info!("Creating user with email: {} and username: {}", user_create.email, user_create.username);
                 with_user_create_params(user_create.clone());
                 inner_ctx
                     .clone()
@@ -393,23 +380,23 @@ async fn post_user_filter(
 
 /// Get the routes for the server.
 async fn get_app(
-    ctx: CasinoContext,
+    ctx: &mut CasinoContext,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     tracing::info!("building filters!");
     // let put_transaction_filter = transaction_put_filter(ctx.clone()).await;
-    // let post_user_filter = post_user_filter(ctx.clone()).await;
-    let get_transaction_filter = get_transaction_filter(ctx.clone()).await;
-    let get_user_filter = get_user_filter(ctx).await;
+    // let get_transaction_filter = get_transaction_filter(ctx.clone()).await;
+    let post_user_filter = post_user_filter(ctx.clone()).await;
+    let get_user_filter = get_user_filter(ctx.clone()).await;
     let health = warp::path!("health").map(|| "Hello, world!");
-    // let log = warp::log("casino_buddy::api");
 
     health
-        .or(get_transaction_filter)
         .or(get_user_filter)
+        .or(post_user_filter)
         .with(warp::trace::request())
-        // .or(post_user_filter)
-        // .or(put_transaction_filter)
-        // .with(log)
+        // .or(post_user_filter(ctx.clone()).await)
+        // .or(get_transaction_filter(ctx.clone()).await)
+        // .or(transaction_put_filter(ctx.clone()).await)
+    
 }
 
 
@@ -428,12 +415,13 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         // routes' durations!
         .with_span_events(FmtSpan::CLOSE)
         .init();
-    // let ctx = CasinoContext::default(); //Box::leak(Box::new(VotingContext::new().await));
+    // We leak the box here on purpose so we can have a reference to it that
+    // lives for the lifetime of the program.
     let ctx = Box::leak(Box::new(CasinoContext::default()));
-    let app = get_app(ctx.clone()).await;
+    let app = get_app(ctx).await;
     let addr = std::net::SocketAddr::from(([0, 0, 0, 0], 3030));
 
-    println!("Starting server on {:?}", addr);
+    tracing::info!("Starting server on {:?}", addr);
     warp::serve(app).run(addr).await;
 
     Ok(())
