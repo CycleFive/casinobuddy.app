@@ -21,6 +21,11 @@ curl -X POST \
   -H 'Content-Type: application/json' \
   -d '{"username":"testuser","email":"testemail"}'
 
+
+curl -X POST \
+  http://localhost:3030/transaction \
+  -H 'Content-Type: application/json' \
+  -d '{"casino_id": 1,"user_id": 1, "cost": 100, "benefit": 120}'
 # printf "POST /transaction/1 HTTP/1.0\nHost: localhost\n\n" | nc localhost 3030
 # printf "\n"
 # printf "PUT /user/1 HTTP/1.0\nHost: localhost\n\n" | nc localhost 3030
