@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS play_session (
     play_date           TIMESTAMP NOT NULL,
     created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES "user"(id),
+    FOREIGN KEY (user_id) REFERENCES user(id),
     FOREIGN KEY (casino_id) REFERENCES casino(id)
 );
 

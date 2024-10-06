@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT COUNT(*) as cnt FROM user WHERE username = $1",
+  "query": "SELECT COUNT(*) as cnt FROM \"user\" WHERE username = $1 GROUP BY email ",
   "describe": {
     "columns": [
       {
@@ -16,5 +16,5 @@
       false
     ]
   },
-  "hash": "08ab90fb5d4b1b6bb3c29dcc61d0bd233a81dcac11be07a268ab38cfd8c684e2"
+  "hash": "ea85b7f955736e04285a0bfc34ecd95c0e401664e82c2e996bca14dfd9b2a37c"
 }

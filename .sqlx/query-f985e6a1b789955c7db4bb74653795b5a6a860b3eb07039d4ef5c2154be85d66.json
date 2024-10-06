@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "INSERT INTO user (email, username) VALUES ($1, $2) RETURNING id",
+  "query": "INSERT INTO user (email, username, discord_id) VALUES ($1, $2, $3) RETURNING id",
   "describe": {
     "columns": [
       {
@@ -10,11 +10,11 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 3
     },
     "nullable": [
       false
     ]
   },
-  "hash": "ac64f27c8d96a850809d73c41d5e52401c33785d51bf07a327d81a1c5432d2ca"
+  "hash": "f985e6a1b789955c7db4bb74653795b5a6a860b3eb07039d4ef5c2154be85d66"
 }
