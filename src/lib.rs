@@ -1,7 +1,7 @@
 use tracing_subscriber::fmt::format::FmtSpan;
 use uuid::Uuid;
 use sqlx::PgPool;
-use std::{convert::Infallible, sync::Arc};
+use std::{convert::Infallible, str::FromStr, sync::Arc};
 use warp::{http::StatusCode, reject::Rejection, reply, Filter, Reply};
 
 pub mod error;
@@ -318,18 +318,20 @@ async fn transaction_post_filter(
     let context = warp::any().map(move || ctx.clone());
 
     // POST /transaction/{user_id}/{casino_id}
-    warp::path!("transaction" / u64 / u64 )
+    warp::path!("transaction" / String / String)
     .and(warp::post())
         .and(warp::body::json())
         .and(context)
         .and_then(
-            |user_id: u64, casino_id: u64, params: TransactionCreate, inner_ctx: CasinoContext| async move {
+            |user_id: String, casino_id: String, params: TransactionCreate, inner_ctx: CasinoContext| async move {
+                let user_id: Uuid = Uuid::from_str(&user_id).map_err(|_| BadRequest)?;
+                let casino_id: Uuid = Uuid::from_str(&casino_id).map_err(|_| BadRequest)?;
                 // params.user_id = user_id as i64;
                 // params.casino_id = casino_id as i64;
                 with_transaction_create_params(params.clone());
                 inner_ctx
                     .clone()
-                    .process_post_transaction(user_id as i64, casino_id as i64, params.cost, params.benefit, &params.notes)
+                    .process_post_transaction(user_id, casino_id, params.cost, params.benefit, &params.notes)
                     .await
             },
         )
@@ -341,12 +343,13 @@ async fn transaction_get_filter(
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     let context = warp::any().map(move || ctx.clone());
 
-    warp::path!("transaction" / u64)
+    warp::path!("transaction" / String)
         .and(warp::get())
         .and(context)
-        .and_then(|user_id: u64, inner_ctx: CasinoContext| async move {
+        .and_then(|user_id: String, inner_ctx: CasinoContext| async move {
+            let user_id = user_id.parse::<Uuid>().unwrap();
             tracing::info!("Getting transactions with user_id: {}", user_id);
-            inner_ctx.process_get_transaction(user_id as i64).await
+            inner_ctx.process_get_transaction(user_id).await
         })
 }
 

@@ -1,51 +1,51 @@
 {
-  "db_name": "SQLite",
+  "db_name": "PostgreSQL",
   "query": "SELECT * FROM \"transaction\" ORDER BY created_at desc",
   "describe": {
     "columns": [
       {
-        "name": "id",
         "ordinal": 0,
-        "type_info": "Integer"
+        "name": "id",
+        "type_info": "Uuid"
       },
       {
-        "name": "user_id",
         "ordinal": 1,
-        "type_info": "Integer"
+        "name": "user_id",
+        "type_info": "Uuid"
       },
       {
-        "name": "casino_id",
         "ordinal": 2,
-        "type_info": "Integer"
+        "name": "casino_id",
+        "type_info": "Uuid"
       },
       {
-        "name": "cost",
         "ordinal": 3,
-        "type_info": "Integer"
+        "name": "cost",
+        "type_info": "Int4"
       },
       {
-        "name": "benefit",
         "ordinal": 4,
-        "type_info": "Integer"
+        "name": "benefit",
+        "type_info": "Int4"
       },
       {
-        "name": "created_at",
         "ordinal": 5,
-        "type_info": "Datetime"
+        "name": "created_at",
+        "type_info": "Timestamp"
       },
       {
-        "name": "updated_at",
         "ordinal": 6,
-        "type_info": "Datetime"
+        "name": "updated_at",
+        "type_info": "Timestamp"
       },
       {
-        "name": "notes",
         "ordinal": 7,
+        "name": "notes",
         "type_info": "Text"
       }
     ],
     "parameters": {
-      "Right": 0
+      "Left": []
     },
     "nullable": [
       false,
