@@ -13,8 +13,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-log = "0.2"
 serde = "1.0.210"
 serde_json = "1.0.128"
+uuid = { version = "1.10.0", features = ["serde", "v4"] }
 chrono = { version = "0.4", features = ["serde"] }
 
 [dependencies.sqlx]
 version = "0.8.2"
-features = ["sqlite", "macros", "chrono", "runtime-tokio", "migrate"]
+features = ["postgres", "macros", "chrono", "runtime-tokio", "migrate"]

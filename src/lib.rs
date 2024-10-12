@@ -1,9 +1,13 @@
 use tracing_subscriber::fmt::format::FmtSpan;
-use sqlx::SqlitePool;
+use uuid::Uuid;
+use sqlx::PgPool;
 use std::{convert::Infallible, sync::Arc};
 use warp::{http::StatusCode, reject::Rejection, reply, Filter, Reply};
 
 pub mod error;
+pub use error::*;
+
+const DEFAULT_DATABASE_URL: &str = "postgresql://postgres:mysecretpassword@localhost:5432/casinobuddy";
 
 /// Custom error type for sqlx errors.
 #[derive(Debug)]
@@ -44,14 +48,14 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
 /// DB struct for transactions.
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct Transaction {
-    pub id: i64,
-    pub user_id: i64,
-    pub casino_id: i64,
-    pub cost: i64,
-    pub benefit: i64,
+    pub id:         uuid::Uuid,
+    pub user_id:    uuid::Uuid,
+    pub casino_id:  uuid::Uuid,
+    pub cost:       i64,
+    pub benefit:    i64,
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
-    pub notes: Option<String>,
+    pub notes:      Option<String>,
 }
 
 /// DB struct for redemptions.
@@ -68,11 +72,7 @@ pub struct Redemption {
 /// DB struct for users.
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct User {
-    pub id: i64,
-    pub email: String,
-    pub username: String,
-    pub avatar: Option<String>,
-    pub discord_id: Option<String>,
+    pub id: i64, // FIXME: Make this uuid4
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
 }
@@ -94,7 +94,7 @@ pub struct UserReplyBody {
 struct CasinoContext {
     // We want to be able to run without a database and export a state file I think
     // Do I really need to use Arc here? There is already an arc in the Pool...
-    db: Arc<SqlitePool>,
+    db: Arc<PgPool>,
 }
 
 /// Custom type for a user id.
@@ -108,12 +108,12 @@ use serde_json::json;
 /// Implementation for [CasinoContext]
 impl CasinoContext {
     /// Create a new instance of `[CasinoContext]` given a database pool.
-    fn new(db: SqlitePool) -> Self {
+    fn new(db: PgPool) -> Self {
         Self { db: Arc::new(db) }
     }
 
     /// Get all transactions for a user.
-    async fn get_transactions(&self, user_id: i64) -> Result<Vec<Transaction>, sqlx::Error> {
+    async fn get_transactions(&self, user_id: Uuid) -> Result<Vec<Transaction>, sqlx::Error> {
         let transactions = sqlx::query_as!(
                 Transaction,
                 r#"SELECT * FROM "transaction" WHERE user_id = $1"#,
@@ -136,7 +136,7 @@ impl CasinoContext {
     }
 
     /// Get a user by their id.
-    async fn get_user(&self, user_id: i64) -> Result<Vec<User>, sqlx::Error> {
+    async fn get_user(&self, user_id: Uuid) -> Result<Vec<User>, sqlx::Error> {
         let user = sqlx::query_as!(User, r#"SELECT * FROM "user" WHERE id = $1"#, user_id)
             .fetch_all(&*self.db)
             .await?;
@@ -179,10 +179,7 @@ impl CasinoContext {
         let discord_id = "0";
         let user_id = sqlx::query_as!(
             CBUserId,
-            "INSERT INTO user (email, username, discord_id) VALUES ($1, $2, $3) RETURNING id",
-            email,
-            username,
-            discord_id
+            "INSERT INTO user created_at VALUES NOW() RETURNING id"
         )
         .fetch_one(&*self.db)
         .await?;
@@ -192,8 +189,8 @@ impl CasinoContext {
     /// Create a new transaction, these are the purchases of coins from the casinos.
     async fn create_transaction(
         &self,
-        user_id: i64,
-        casino_id: i64,
+        user_id: Uuid,
+        casino_id: Uuid,
         cost: i64,
         benefit: i64,
         notes: Option<String>,
@@ -215,7 +212,7 @@ impl CasinoContext {
     //TODO: Create a redemption entry.
 
     /// Process a request to get all transactions for a user.
-    async fn process_get_transaction(&self, user_id: i64) -> Result<impl Reply, Rejection> {
+    async fn process_get_transaction(&self, user_id: Uuid) -> Result<impl Reply, Rejection> {
         tracing::info!("Getting transactions with user_id: {}", user_id);
         let transactions = self.get_transactions(user_id).await.map_err(Sqlx)?;
         let res = if transactions.is_empty() {
@@ -227,7 +224,7 @@ impl CasinoContext {
     }
 
     /// Process a request to get a user by their id.
-    async fn process_get_user(&self, user_id: i64) -> Result<impl Reply, Rejection> {
+    async fn process_get_user(&self, user_id: Uuid) -> Result<impl Reply, Rejection> {
         tracing::info!("Getting user with id: {}", user_id);
         let user = self.get_user(user_id).await.map_err(Sqlx)?;
         Ok(warp::reply::json(&UserReplyBody { body: user }))
@@ -253,8 +250,8 @@ impl CasinoContext {
     /// Process a request to create a new transaction.
     async fn process_post_transaction(
         &self,
-        user_id: i64,
-        casino_id: i64,
+        user_id: Uuid,
+        casino_id: Uuid,
         cost: i64,
         benefit: i64,
         notes: &Option<String>,
@@ -270,9 +267,9 @@ impl Default for CasinoContext {
         // Try to get the database from the environment.
         let url = match std::env::var("DATABASE_URL") {
             Ok(val) => val,
-            Err(_) => "sqlite::memory".to_string(),
+            Err(_) => DEFAULT_DATABASE_URL.to_string(),
         };
-        let db: SqlitePool = sqlx::SqlitePool::connect_lazy(&url)
+        let db: sqlx::Pool<sqlx::Postgres> = sqlx::PgPool::connect_lazy(&url)
             .expect("Failed to connect to database");
         Self::new(db)
     }
@@ -286,12 +283,13 @@ async fn get_user_filter(
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     let context = warp::any().map(move || ctx.clone());
 
-    warp::path!("user" / u64)
+    warp::path!("user" / String)
         .and(warp::get())
         .and(context)
-        .and_then(|user_id: u64, inner_ctx: CasinoContext| async move {
+        .and_then(|user_id: String, inner_ctx: CasinoContext| async move {
+            let user_id = Uuid::parse_str(&user_id).unwrap();
             tracing::info!("Getting user with id: {}", user_id);
-            inner_ctx.process_get_user(user_id as i64).await
+            inner_ctx.process_get_user(user_id).await
         })
 }
 
@@ -444,13 +442,14 @@ mod tests {
     pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./test_migrations");
 
     #[sqlx::test(migrator = "MIGRATOR")]
-    async fn test_get_transactions(pool: SqlitePool) -> sqlx::Result<()> {
+    async fn test_get_transactions(pool: PgPool) -> sqlx::Result<()> {
+        let test_uuid = Uuid::nil();
         let ctx = CasinoContext::new(pool.clone());
-        let result = ctx.get_transactions(1).await;
+        let result = ctx.get_transactions(test_uuid).await;
         match result {
             Ok(transactions) => {
                 assert_eq!(1, transactions.len());
-                assert_eq!(1, transactions[0].id);
+                assert_eq!(test_uuid, transactions[0].id);
             },
             Err(e) => {
                 eprintln!("Error: {:?}", e);
@@ -461,13 +460,14 @@ mod tests {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
-    async fn test_get_user(pool: SqlitePool) -> sqlx::Result<()> {
+    async fn test_get_user(pool: PgPool) -> sqlx::Result<()> {
+        let test_uuid = Uuid::nil();
         let ctx = CasinoContext::new(pool.clone());
-        let result = ctx.get_user(1).await;
+        let result = ctx.get_user(test_uuid).await;
         match result {
             Ok(user) => {
                 assert_eq!(1, user.len());
-                assert_eq!(1, user[0].id);
+                assert_eq!(test_uuid, user[0].id);
             },
             Err(e) => {
                 eprintln!("Error: {:?}", e);
@@ -478,7 +478,7 @@ mod tests {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
-    async fn test_check_username_email(pool: SqlitePool) -> sqlx::Result<()> {
+    async fn test_check_username_email(pool: PgPool) -> sqlx::Result<()> {
         let ctx = CasinoContext::new(pool.clone());
         let result = ctx.check_username_email("testuser", "testemail@test.test").await;
         match result {
@@ -494,7 +494,7 @@ mod tests {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
-    async fn test_create_user(pool: SqlitePool) -> sqlx::Result<()> {
+    async fn test_create_user(pool: PgPool) -> sqlx::Result<()> {
         let ctx = CasinoContext::new(pool.clone());
         let result = ctx.create_user("email", "username").await;
         match result {
@@ -510,12 +510,15 @@ mod tests {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
-    async fn test_create_transaction(pool: SqlitePool) -> sqlx::Result<()> {
+    async fn test_create_transaction(pool: PgPool) -> sqlx::Result<()> {
+        let user_id = Uuid::nil();
+        let casino_id = Uuid::nil();
+        let transaction_id = Uuid::nil();
         let ctx = CasinoContext::new(pool.clone());
-        let result = ctx.create_transaction(1, 1, 1, 1, None).await;
+        let result = ctx.create_transaction(user_id, casino_id, 1, 1, None).await;
         match result {
             Ok(transaction) => {
-                assert_eq!(2, transaction.id);
+                assert_eq!(transaction_id, transaction.id);
             },
             Err(e) => {
                 eprintln!("Error: {:?}", e);
@@ -526,16 +529,17 @@ mod tests {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
-    async fn test_req_get_user(pool: SqlitePool) -> sqlx::Result<()> {
+    async fn test_req_get_user(pool: PgPool) -> sqlx::Result<()> {
+        let user_id = Uuid::nil();
         let ctx = CasinoContext::new(pool.clone());
-        let req = warp::test::request().method("GET").path("/user/1");
+        let req = warp::test::request().method("GET").path(&format!("/user/{}", user_id));
         let res = req.reply(&get_user_filter(ctx).await).await;
         assert_eq!(res.status(), StatusCode::OK);
         Ok(())
     }   
 
     #[sqlx::test(migrator = "MIGRATOR")]
-    async fn test_req_get_transactions(pool: SqlitePool) -> sqlx::Result<()> {
+    async fn test_req_get_transactions(pool: PgPool) -> sqlx::Result<()> {
         let ctx = CasinoContext::new(pool.clone());
         let req = warp::test::request().method("GET").path("/transaction/1");
         let res = req.reply(&transaction_get_filter(ctx).await).await;
@@ -544,7 +548,7 @@ mod tests {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
-    async fn test_req_post_user(pool: SqlitePool) -> sqlx::Result<()> {
+    async fn test_req_post_user(pool: PgPool) -> sqlx::Result<()> {
         let ctx = CasinoContext::new(pool.clone());
         let req = warp::test::request()
             .method("POST")
@@ -559,7 +563,7 @@ mod tests {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
-    async fn test_req_post_transaction(pool: SqlitePool) -> sqlx::Result<()> {
+    async fn test_req_post_transaction(pool: PgPool) -> sqlx::Result<()> {
         let ctx = CasinoContext::new(pool.clone());
         let req = warp::test::request()
             .method("POST")
@@ -575,7 +579,7 @@ mod tests {
     }
 
     #[sqlx::test(migrator = "MIGRATOR")]
-    async fn test_req_health(pool: SqlitePool) -> sqlx::Result<()> {
+    async fn test_req_health(pool: PgPool) -> sqlx::Result<()> {
         let ctx = Box::leak(Box::new(CasinoContext::new(pool.clone())));
         let req = warp::test::request().method("GET").path("/health");
         let res = req.reply(&get_app(ctx).await).await;
