@@ -442,7 +442,7 @@ mod tests {
 
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn test_get_transactions(pool: PgPool) -> sqlx::Result<()> {
-        let test_uuid = Uuid::nil();
+        let test_uuid = Uuid::parse_str("d61b6bba-61ba-4cab-b8b7-74a880968ec6").unwrap();
         let ctx = CasinoContext::new(pool.clone());
         let result = ctx.get_transactions(test_uuid).await;
         match result {
@@ -541,7 +541,7 @@ mod tests {
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn test_req_get_transactions(pool: PgPool) -> sqlx::Result<()> {
         let ctx = CasinoContext::new(pool.clone());
-        let req = warp::test::request().method("GET").path("/transaction/1");
+        let req = warp::test::request().method("GET").path("/transaction/d61b6bba-61ba-4cab-b8b7-74a880968ec6");
         let res = req.reply(&transaction_get_filter(ctx).await).await;
         assert_eq!(res.status(), StatusCode::OK);
         Ok(())
@@ -565,9 +565,10 @@ mod tests {
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn test_req_post_transaction(pool: PgPool) -> sqlx::Result<()> {
         let ctx = CasinoContext::new(pool.clone());
+        let uuid = Uuid::nil();
         let req = warp::test::request()
             .method("POST")
-            .path("/transaction/1/1")
+            .path(&format!("/transaction/{}/{}", uuid, uuid))
             .json(&TransactionCreate {
                 cost: BigDecimal::from(1),
                 benefit: BigDecimal::from(1),
