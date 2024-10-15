@@ -1,3 +1,4 @@
+use rust_decimal::BigDecimal;
 use tracing_subscriber::fmt::format::FmtSpan;
 use uuid::Uuid;
 use sqlx::PgPool;
@@ -51,8 +52,8 @@ pub struct Transaction {
     pub id:         uuid::Uuid,
     pub user_id:    uuid::Uuid,
     pub casino_id:  uuid::Uuid,
-    pub cost:       i64,
-    pub benefit:    i64,
+    pub cost:       BigDecimal,
+    pub benefit:    BigDecimal,
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
     pub notes:      Option<String>,
@@ -61,10 +62,10 @@ pub struct Transaction {
 /// DB struct for redemptions.
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct Redemption {
-    pub id: i64,
-    pub user_id: i64,
-    pub casino_id: i64,
-    pub amount: i64,
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub casino_id: Uuid,
+    pub amount: BigDecimal,
     pub created_at: chrono::NaiveDateTime,
     pub received_at: Option<chrono::NaiveDateTime>,
 }
@@ -72,7 +73,7 @@ pub struct Redemption {
 /// DB struct for users.
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct User {
-    pub id: i64, // FIXME: Make this uuid4
+    pub id: Uuid, // FIXME: Make this uuid4
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
 }
@@ -100,7 +101,7 @@ struct CasinoContext {
 /// Custom type for a user id.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CBUserId {
-    pub id: i64,
+    pub id: Uuid,
 }
 
 use serde_json::json;
@@ -128,7 +129,7 @@ impl CasinoContext {
     async fn _get_transactions_all(&self) -> Result<Vec<Transaction>, sqlx::Error> {
         let transactions = sqlx::query_as!(
                 Transaction,
-                r#"SELECT * FROM "transaction" ORDER BY created_at desc"#,
+                r#"SELECT * FROM "transaction" ORDER BY created_at desc RETURNING *"#,
             )
             .fetch_all(&*self.db)
             .await?;
@@ -191,8 +192,8 @@ impl CasinoContext {
         &self,
         user_id: Uuid,
         casino_id: Uuid,
-        cost: i64,
-        benefit: i64,
+        cost: BigDecimal,
+        benefit: BigDecimal,
         notes: Option<String>,
     ) -> Result<Transaction, sqlx::Error> {
         let transaction = sqlx::query_as!(
@@ -252,8 +253,8 @@ impl CasinoContext {
         &self,
         user_id: Uuid,
         casino_id: Uuid,
-        cost: i64,
-        benefit: i64,
+        cost: BigDecimal,
+        benefit: BigDecimal,
         notes: &Option<String>,
     ) -> Result<impl Reply, Rejection> {
         let transaction = self.create_transaction(user_id, casino_id, cost, benefit, notes.clone()).await.map_err(Sqlx)?;
@@ -299,8 +300,8 @@ async fn get_user_filter(
 struct TransactionCreate {
     // user_id: i64,
     // casino_id: i64,
-    cost: i64,
-    benefit: i64,
+    cost: BigDecimal,
+    benefit: BigDecimal,
     notes: Option<String>,
 }
 

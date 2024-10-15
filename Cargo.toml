@@ -15,7 +15,8 @@ serde = "1.0.210"
 serde_json = "1.0.128"
 uuid = { version = "1.10.0", features = ["serde", "v4"] }
 chrono = { version = "0.4", features = ["serde"] }
+rust_decimal = "1.36.0"
 
 [dependencies.sqlx]
 version = "0.8.2"
-features = ["postgres", "macros", "chrono", "runtime-tokio", "migrate"]
+features = ["postgres", "uuid", "bigdecimal", "macros", "chrono", "runtime-tokio", "migrate"]
