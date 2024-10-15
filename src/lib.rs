@@ -1,4 +1,4 @@
-use rust_decimal::BigDecimal;
+use bigdecimal::BigDecimal;
 use tracing_subscriber::fmt::format::FmtSpan;
 use uuid::Uuid;
 use sqlx::PgPool;
@@ -129,7 +129,7 @@ impl CasinoContext {
     async fn _get_transactions_all(&self) -> Result<Vec<Transaction>, sqlx::Error> {
         let transactions = sqlx::query_as!(
                 Transaction,
-                r#"SELECT * FROM "transaction" ORDER BY created_at desc RETURNING *"#,
+                r#"SELECT * FROM "transaction" ORDER BY created_at DESC"# 
             )
             .fetch_all(&*self.db)
             .await?;
@@ -177,10 +177,10 @@ impl CasinoContext {
         // This shouldn't fail because we don't have any constraints on the email or username.
         // Do we want to constrain these in the database?
         // Should be checking for existing users with the same email or username?
-        let discord_id = "0";
+        let _discord_id = "0";
         let user_id = sqlx::query_as!(
             CBUserId,
-            "INSERT INTO user created_at VALUES NOW() RETURNING id"
+            r#"INSERT INTO "user" (created_at) VALUES (NOW()) RETURNING id"#,
         )
         .fetch_one(&*self.db)
         .await?;
