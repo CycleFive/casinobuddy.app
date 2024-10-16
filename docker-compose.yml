@@ -7,8 +7,11 @@ services:
     env_file: .env
     ports:
       - 5432:5432/tcp
+    expose:
+      - "${PUB_PORT:-5432}"
     volumes:
       - casinobuddy_data:/var/lib/postgresql/data
 
 volumes:
   casinobuddy_data:
+    external: true
