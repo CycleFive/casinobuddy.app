@@ -1,17 +1,28 @@
-version: '3.7'
-
 services:
-  psql:
-    container_name: casinobuddy_psql
-    image: postgres:16.2-alpine
-    env_file: .env
+  casino-postgres:
+    container_name: casino-postgres
+    image: postgres:latest
+    volumes:
+      - casino-pgdata:/var/lib/postgresql/data
+    environment:
+      - PGUSER=${POSTGRES_USER:-postgres}
+      - PGPASSWORD=${POSTGRES_PASSWORD:-mysecretpassword}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-mysecretpassword}
+      - POSTGRES_DB=${POSTGRES_DB:-casinobuddy}
+      - PGDATABASE=${POSTGRES_DB:-casinobuddy}
+      - PGPORT=${PUB_PORT:-5432}
+      - PGDATA=/var/lib/postgresql/data
     ports:
-      - 5432:5432/tcp
+      - "127.0.0.1:${PUB_PORT:-5432}:5432"
     expose:
       - "${PUB_PORT:-5432}"
-    volumes:
-      - casinobuddy_data:/var/lib/postgresql/data
-
+    restart: always
+#!/bin/sh docker volume create casino-pgdata; docker volume create casino-data
 volumes:
-  casinobuddy_data:
+  casino-data:
+    name: casino-data
+    external: true
+  casino-pgdata:
+    name: casino-pgdata
     external: true
