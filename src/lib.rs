@@ -46,6 +46,17 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
     }
 }
 
+/// DB struct for casinos.
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct Casino {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub url: String,
+    pub description: String,
+    pub created_at: chrono::NaiveDateTime,
+    pub updated_at: chrono::NaiveDateTime,
+}
+
 /// DB struct for transactions.
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct Transaction {
@@ -76,6 +87,12 @@ pub struct User {
     pub id: Uuid, // FIXME: Make this uuid4
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
+}
+
+/// Struct for the json response for casino listing.
+#[derive(serde::Serialize)]
+pub struct CasinoListingReplyBody {
+    pub casinos: Vec<Casino>,
 }
 
 /// Struct for the json response body for transactions.
@@ -113,6 +130,13 @@ impl CasinoContext {
         Self { db: Arc::new(db) }
     }
 
+    /// Get all casinos
+    async fn get_all_casinos(&self) -> Result<Vec<Casino>, sqlx::Error> {
+        sqlx::query_as!(Casino, "SELECT * FROM casino")
+            .fetch_all(&*self.db)
+            .await
+    }
+
     /// Get all transactions for a user.
     async fn get_transactions(&self, user_id: Uuid) -> Result<Vec<Transaction>, sqlx::Error> {
         let transactions = sqlx::query_as!(
@@ -129,7 +153,7 @@ impl CasinoContext {
     async fn _get_transactions_all(&self) -> Result<Vec<Transaction>, sqlx::Error> {
         let transactions = sqlx::query_as!(
                 Transaction,
-                r#"SELECT * FROM "transaction" ORDER BY created_at DESC"# 
+                r#"SELECT * FROM "transaction" ORDER BY created_at DESC"#
             )
             .fetch_all(&*self.db)
             .await?;
@@ -213,6 +237,13 @@ impl CasinoContext {
     }
 
     //TODO: Create a redemption entry.
+
+    /// Process a request to get all casinos
+    async fn process_casino_listing(&self) -> Result<impl Reply, Rejection> {
+        tracing::info!("Getting casino listing");
+        let casinos = self.get_all_casinos().await.map_err(Sqlx)?;
+        Ok(warp::reply::json(&CasinoListingReplyBody { casinos }))
+    }
 
     /// Process a request to get all transactions for a user.
     async fn process_get_transaction(&self, user_id: Uuid) -> Result<impl Reply, Rejection> {
@@ -333,6 +364,21 @@ async fn transaction_post_filter(
         )
 }
 
+/// Get casino listing
+async fn casino_list_filter(
+    ctx: CasinoContext,
+) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
+    let context = warp::any().map(move || ctx.clone());
+
+    warp::path("casino")
+        .and(warp::get())
+        .and(context)
+        .and_then(|inner_ctx: CasinoContext| async move {
+            tracing::info!("Requesting casino listing");
+            inner_ctx.process_casino_listing().await
+        })
+}
+
 /// Get all transactions for a user.
 async fn transaction_get_filter(
     ctx: CasinoContext,
@@ -390,9 +436,11 @@ async fn get_app(
     ctx: &mut CasinoContext,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     tracing::info!("building filters!");
+    // Aren't these being done in serial when they could be concurrent?
     let post_user_filter = post_user_filter(ctx.clone()).await;
     let get_user_filter = get_user_filter(ctx.clone()).await;
-    let post_transaction_filter = transaction_post_filter(ctx.clone()).await;  
+    let post_transaction_filter = transaction_post_filter(ctx.clone()).await;
+    let casino_list = casino_list_filter(ctx.clone()).await;
     let get_transaction_filter = transaction_get_filter(ctx.clone()).await;
 
     let health = warp::path!("health").map(|| "Hello, world!");
@@ -400,6 +448,7 @@ async fn get_app(
     health
         .or(post_transaction_filter)
         .or(get_user_filter)
+        .or(casino_list)
         .or(get_transaction_filter)
         .or(post_user_filter)
         .recover(handle_rejection)
@@ -536,7 +585,7 @@ mod tests {
         let res = req.reply(&get_user_filter(ctx).await).await;
         assert_eq!(res.status(), StatusCode::OK);
         Ok(())
-    }   
+    }
 
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn test_req_get_transactions(pool: PgPool) -> sqlx::Result<()> {
