@@ -1,0 +1,14 @@
+version: '3.7'
+
+services:
+  psql:
+    container_name: casinobuddy_psql
+    image: postgres:16.2-alpine
+    env_file: .env
+    ports:
+      - 5432:5432/tcp
+    volumes:
+      - casinobuddy_data:/var/lib/postgresql/data
+
+volumes:
+  casinobuddy_data:
