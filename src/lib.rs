@@ -8,7 +8,7 @@ use warp::{http::StatusCode, reject::Rejection, reply, Filter, Reply};
 pub mod error;
 pub use error::*;
 
-const DEFAULT_DATABASE_URL: &str = "postgresql://postgres:mysecretpassword@localhost:5432/casinobuddy";
+const DEFAULT_DATABASE_URL: &str = "postgresql://casinobuddy_api:mygaypassword@localhost:5432/casinobuddy";
 
 /// Custom error type for sqlx errors.
 #[derive(Debug)]
@@ -60,9 +60,9 @@ pub struct Casino {
 /// DB struct for transactions.
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct Transaction {
-    pub id:         uuid::Uuid,
-    pub user_id:    uuid::Uuid,
-    pub casino_id:  uuid::Uuid,
+    pub id:         Uuid,
+    pub user_id:    Uuid,
+    pub casino_id:  Uuid,
     pub cost:       BigDecimal,
     pub benefit:    BigDecimal,
     pub created_at: chrono::NaiveDateTime,
@@ -73,18 +73,18 @@ pub struct Transaction {
 /// DB struct for redemptions.
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct Redemption {
-    pub id: Uuid,
-    pub user_id: Uuid,
-    pub casino_id: Uuid,
-    pub amount: BigDecimal,
-    pub created_at: chrono::NaiveDateTime,
-    pub received_at: Option<chrono::NaiveDateTime>,
+    pub id:             Uuid,
+    pub user_id:        Uuid,
+    pub casino_id:      Uuid,
+    pub amount:         BigDecimal,
+    pub created_at:     chrono::NaiveDateTime,
+    pub received_at:    Option<chrono::NaiveDateTime>,
 }
 
 /// DB struct for users.
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct User {
-    pub id: Uuid, // FIXME: Make this uuid4
+    pub id:         Uuid,
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
 }
@@ -324,11 +324,11 @@ async fn get_user_filter(
 /// Struct for the json query body for create adding a transaction.
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 struct TransactionCreate {
-    // user_id: i64,
-    // casino_id: i64,
-    cost: BigDecimal,
-    benefit: BigDecimal,
-    notes: Option<String>,
+    user_id:    String,
+    casino_id:  String,
+    cost:       BigDecimal,
+    benefit:    BigDecimal,
+    notes:  Option<String>,
 }
 
 /// Filter to the transaction create params.
@@ -614,11 +614,14 @@ mod tests {
     #[sqlx::test(migrator = "MIGRATOR")]
     async fn test_req_post_transaction(pool: PgPool) -> sqlx::Result<()> {
         let ctx = CasinoContext::new(pool.clone());
-        let uuid = Uuid::nil();
+        let casino_uuid = Uuid::nil();
+        let user_uuid = Uuid::from_str("d61b6bba-61ba-4cab-b8b7-74a880968ec6").expect("uuid parse failed");
         let req = warp::test::request()
             .method("POST")
-            .path(&format!("/transaction/{}/{}", uuid, uuid))
+            .path(&format!("/transaction/{user_uuid}/{casino_uuid}"))
             .json(&TransactionCreate {
+                casino_id: casino_uuid.to_string(),
+                user_id: user_uuid.to_string(),
                 cost: BigDecimal::from(1),
                 benefit: BigDecimal::from(1),
                 notes: None,
