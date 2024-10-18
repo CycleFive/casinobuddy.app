@@ -98,6 +98,7 @@ pub struct Redemption {
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct User {
     pub id: Uuid, // FIXME: Make this uuid4
+    pub oauth_id: String,
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
 }

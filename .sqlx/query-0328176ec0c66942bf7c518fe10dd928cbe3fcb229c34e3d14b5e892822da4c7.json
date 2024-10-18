@@ -10,11 +10,16 @@
       },
       {
         "ordinal": 1,
+        "name": "oauth_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
         "name": "created_at",
         "type_info": "Timestamp"
       },
       {
-        "ordinal": 2,
+        "ordinal": 3,
         "name": "updated_at",
         "type_info": "Timestamp"
       }
@@ -25,6 +30,7 @@
       ]
     },
     "nullable": [
+      false,
       false,
       false,
       false
