@@ -60,9 +60,9 @@ pub struct Casino {
 /// Db struct for user casinos.
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct UserCasino {
-    pub id: uuid::Uuid,
-    pub user_id: uuid::Uuid,
-    pub casino_id: uuid::Uuid,
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub casino_id: Uuid,
     pub name: String,
     pub is_vip: bool,
     pub is_verified: bool,
@@ -73,9 +73,9 @@ pub struct UserCasino {
 /// DB struct for transactions.
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct Transaction {
-    pub id:         uuid::Uuid,
-    pub user_id:    uuid::Uuid,
-    pub casino_id:  uuid::Uuid,
+    pub id:         Uuid,
+    pub user_id:    Uuid,
+    pub casino_id:  Uuid,
     pub cost:       BigDecimal,
     pub benefit:    BigDecimal,
     pub created_at: chrono::NaiveDateTime,
@@ -101,6 +101,12 @@ pub struct User {
     pub oauth_id: String,
     pub created_at: chrono::NaiveDateTime,
     pub updated_at: chrono::NaiveDateTime,
+}
+
+/// Struct for the login response.
+#[derive(serde::Serialize)]
+pub struct LoginReplyBody {
+    id: Uuid,
 }
 
 /// Struct for the json response for casino listing.
@@ -198,12 +204,19 @@ impl CasinoContext {
         Ok(transactions)
     }
 
-    /// Get a user by their id.
+    /// Get a user by their id. (TODO: Shouldn't this just fetch_one?)
     async fn get_user(&self, user_id: Uuid) -> Result<Vec<User>, sqlx::Error> {
         let user = sqlx::query_as!(User, r#"SELECT * FROM "user" WHERE id = $1"#, user_id)
             .fetch_all(&*self.db)
             .await?;
         Ok(user)
+    }
+
+    /// Get a user by their oauth id.
+    async fn get_user_by_oauth_id(&self, oauth_id: &str) -> Result<User, sqlx::Error> {
+        sqlx::query_as!(User, r#"SELECT * FROM "user" WHERE oauth_id = $1"#, oauth_id)
+            .fetch_one(&*self.db)
+            .await
     }
 
     /// Check if a user and/or email already exists.
@@ -235,20 +248,20 @@ impl CasinoContext {
     // }
 
     /// Create a new user.
-    async fn create_user(&self) -> Result<CBUserId, sqlx::Error> {
+    async fn create_user(&self, oauth_id: &str) -> Result<User, sqlx::Error> {
     //async fn create_user(&self, email: &str, username: &str) -> Result<CBUserId, sqlx::Error> {
         //tracing::trace!("Creating user with email: {} and username: {}", email, username);
         // This shouldn't fail because we don't have any constraints on the email or username.
         // Do we want to constrain these in the database?
         // Should be checking for existing users with the same email or username?
         let _discord_id = "0";
-        let user_id = sqlx::query_as!(
-            CBUserId,
-            r#"INSERT INTO "user" (created_at) VALUES (NOW()) RETURNING id"#,
+        sqlx::query_as!(
+            User,
+            r#"INSERT INTO "user" (oauth_id) VALUES ($1) RETURNING *"#,
+            oauth_id,
         )
         .fetch_one(&*self.db)
-        .await?;
-        Ok(user_id)
+        .await
     }
 
     /// Create a new transaction, these are the purchases of coins from the casinos.
@@ -309,15 +322,25 @@ impl CasinoContext {
         Ok(warp::reply::json(&UserReplyBody { body: user }))
     }
 
-    /// Process a request to create a new user.
-    async fn process_post_user(
-        &self,
-        _email: &str,
-        _username: &str,
-    ) -> Result<impl Reply, Rejection> {
-        let user_id = self.create_user().await.map_err(Sqlx)?;
-        Ok(warp::reply::json(&user_id))
+    /// Process a login request.
+    async fn process_login(&self, oauth_id: &str) -> Result<impl Reply, Rejection> {
+        tracing::info!("Getting user with oauth_id: {}", oauth_id);
+        let user = match self.get_user_by_oauth_id(oauth_id).await {
+            Ok(user) => user,
+            Err(_) => self.create_user(oauth_id).await.map_err(Sqlx)?
+        };
+        Ok(warp::reply::json(&user))
     }
+
+    /// Process a request to create a new user.
+    // async fn process_post_user(
+    //     &self,
+    //     _email: &str,
+    //     _username: &str,
+    // ) -> Result<impl Reply, Rejection> {
+    //     let user_id = self.create_user().await.map_err(Sqlx)?;
+    //     Ok(warp::reply::json(&user_id))
+    // }
 
     /// Process a request to create a new transaction.
     async fn process_post_transaction(
@@ -347,8 +370,6 @@ impl Default for CasinoContext {
     }
 }
 
-
-
 /// Get a user by their id.
 async fn get_user_filter(
     ctx: CasinoContext,
@@ -365,6 +386,26 @@ async fn get_user_filter(
         })
 }
 
+#[derive(serde::Deserialize)]
+struct LoginRequestBody {
+    oauth_id: String,
+}
+
+/// Log a user in.
+async fn login_filter(
+    ctx: CasinoContext,
+) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
+    let context = warp::any().map(move || ctx.clone());
+
+    warp::path("login")
+        .and(warp::post())
+        .and(warp::body::json())
+        .and(context)
+        .and_then(|req_body: LoginRequestBody, inner_ctx: CasinoContext| async move {
+            tracing::info!("Logging in user with oauth_id: {}", req_body.oauth_id);
+            inner_ctx.process_login(&req_body.oauth_id).await
+        })
+}
 
 /// Struct for the json query body for create adding a transaction.
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
@@ -391,7 +432,7 @@ async fn transaction_post_filter(
 
     // POST /transaction/{user_id}/{casino_id}
     warp::path!("transaction" / String / String)
-    .and(warp::post())
+        .and(warp::post())
         .and(warp::body::json())
         .and(context)
         .and_then(
@@ -471,26 +512,26 @@ fn with_user_create_params(
 }
 
 /// Post a new user.
-async fn post_user_filter(
-    ctx: CasinoContext,
-) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
-    let context = warp::any().map(move || ctx.clone());
+// async fn post_user_filter(
+//     ctx: CasinoContext,
+// ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
+//     let context = warp::any().map(move || ctx.clone());
 
-    warp::path("user")
-        .and(warp::post())
-        .and(warp::path::end())
-        .and(context)
-        .and(warp::body::json())
-        .and_then(
-            |inner_ctx: CasinoContext, user_create: UserCreate| async move {
-                tracing::info!("Creating user with email: {} and username: {}", user_create.email, user_create.username);
-                with_user_create_params(user_create.clone());
-                inner_ctx
-                    .process_post_user(&user_create.email, &user_create.username)
-                    .await
-            },
-        )
-}
+//     warp::path("user")
+//         .and(warp::post())
+//         .and(warp::path::end())
+//         .and(context)
+//         .and(warp::body::json())
+//         .and_then(
+//             |inner_ctx: CasinoContext, user_create: UserCreate| async move {
+//                 tracing::info!("Creating user with email: {} and username: {}", user_create.email, user_create.username);
+//                 with_user_create_params(user_create.clone());
+//                 inner_ctx
+//                     .process_post_user(&user_create.email, &user_create.username)
+//                     .await
+//             },
+//         )
+// }
 
 /// Get the routes for the server.
 async fn get_app(
@@ -498,7 +539,8 @@ async fn get_app(
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     tracing::info!("building filters!");
     // Aren't these being done in serial when they could be concurrent?
-    let post_user_filter = post_user_filter(ctx.clone()).await;
+    // let post_user_filter = post_user_filter(ctx.clone()).await;
+    let login_filter = login_filter(ctx.clone()).await;
     let get_user_filter = get_user_filter(ctx.clone()).await;
     let post_transaction_filter = transaction_post_filter(ctx.clone()).await;
     let casino_list = casino_list_filter(ctx.clone()).await;
@@ -509,11 +551,12 @@ async fn get_app(
 
     health
         .or(post_transaction_filter)
+        .or(login_filter)
         .or(get_user_filter)
         .or(casino_list)
         .or(user_casino)
         .or(get_transaction_filter)
-        .or(post_user_filter)
+        // .or(post_user_filter)
         .recover(handle_rejection)
         .with(warp::trace::request())
 }
