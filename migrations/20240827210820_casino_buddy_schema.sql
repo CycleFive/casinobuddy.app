@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS casino (
 --   free_sweepstakes        BOOLEAN NOT NULL,
 --   prohibited_states       TEXT,
 --   prohibited_countries    TEXT,
- 
+
 CREATE TABLE IF NOT EXISTS "user" (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -54,9 +54,9 @@ CREATE TABLE IF NOT EXISTS user_casino (
     id                      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id                 UUID NOT NULL,
     casino_id               UUID NOT NULL,
-    is_vip                  BOOLEAN NOT NULL,
-    is_verified             BOOLEAN NOT NULL,
-    is_self_excluded        BOOLEAN NOT NULL,
+    is_vip                  BOOLEAN NOT NULL DEFAULT FALSE,
+    is_verified             BOOLEAN NOT NULL DEFAULT FALSE,
+    is_self_excluded        BOOLEAN NOT NULL DEFAULT FALSE,
     created_at              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id)   REFERENCES "user"(id) ON DELETE CASCADE,
     FOREIGN KEY (casino_id) REFERENCES casino(id) ON DELETE CASCADE

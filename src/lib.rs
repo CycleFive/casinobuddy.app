@@ -57,6 +57,19 @@ pub struct Casino {
     pub updated_at: chrono::NaiveDateTime,
 }
 
+/// Db struct for user casinos.
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct UserCasino {
+    pub id: uuid::Uuid,
+    pub user_id: uuid::Uuid,
+    pub casino_id: uuid::Uuid,
+    pub name: String,
+    pub is_vip: bool,
+    pub is_verified: bool,
+    pub is_self_excluded: bool,
+    pub created_at: chrono::NaiveDateTime,
+}
+
 /// DB struct for transactions.
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct Transaction {
@@ -93,6 +106,12 @@ pub struct User {
 #[derive(serde::Serialize)]
 pub struct CasinoListingReplyBody {
     pub casinos: Vec<Casino>,
+}
+
+/// Struct for the json response for a user's casinos.
+#[derive(serde::Serialize)]
+pub struct UserCasinoReplyBody {
+    pub casinos: Vec<UserCasino>,
 }
 
 /// Struct for the json response body for transactions.
@@ -135,6 +154,24 @@ impl CasinoContext {
         sqlx::query_as!(Casino, "SELECT * FROM casino")
             .fetch_all(&*self.db)
             .await
+    }
+
+    /// Get casinos subscribed to by a user
+    async fn get_user_casinos(&self, user_id: Uuid) -> Result<Vec<UserCasino>, sqlx::Error> {
+        sqlx::query_as!(
+            UserCasino,
+            r#"
+                SELECT user_casino.id, user_casino.user_id, user_casino.casino_id, casino.name,
+                    user_casino.is_vip, user_casino.is_verified, user_casino.is_self_excluded,
+                    user_casino.created_at
+                FROM user_casino
+                INNER JOIN casino ON casino.id = user_casino.casino_id
+                WHERE user_casino.user_id = $1
+            "#,
+            user_id
+        )
+        .fetch_all(&*self.db)
+        .await
     }
 
     /// Get all transactions for a user.
@@ -243,6 +280,13 @@ impl CasinoContext {
         tracing::info!("Getting casino listing");
         let casinos = self.get_all_casinos().await.map_err(Sqlx)?;
         Ok(warp::reply::json(&CasinoListingReplyBody { casinos }))
+    }
+
+    /// Process a request to get a user's casinos
+    async fn process_user_casinos(&self, user_id: Uuid) -> Result<impl Reply, Rejection> {
+        tracing::info!("Getting user's casinos");
+        let casinos = self.get_user_casinos(user_id).await.map_err(Sqlx)?;
+        Ok(warp::reply::json(&UserCasinoReplyBody { casinos }))
     }
 
     /// Process a request to get all transactions for a user.
@@ -379,6 +423,22 @@ async fn casino_list_filter(
         })
 }
 
+/// Get a user's casinos
+async fn user_casino_filter(
+    ctx: CasinoContext,
+) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
+    let context = warp::any().map(move || ctx.clone());
+
+    warp::path!("user" / String / "casino")
+        .and(warp::get())
+        .and(context)
+        .and_then(|user_id: String, inner_ctx: CasinoContext| async move {
+            let user_id = user_id.parse::<Uuid>().unwrap();
+            tracing::info!("Getting casinos for user_id: {}", user_id);
+            inner_ctx.process_user_casinos(user_id).await
+        })
+}
+
 /// Get all transactions for a user.
 async fn transaction_get_filter(
     ctx: CasinoContext,
@@ -441,6 +501,7 @@ async fn get_app(
     let get_user_filter = get_user_filter(ctx.clone()).await;
     let post_transaction_filter = transaction_post_filter(ctx.clone()).await;
     let casino_list = casino_list_filter(ctx.clone()).await;
+    let user_casino = user_casino_filter(ctx.clone()).await;
     let get_transaction_filter = transaction_get_filter(ctx.clone()).await;
 
     let health = warp::path!("health").map(|| "Hello, world!");
@@ -449,6 +510,7 @@ async fn get_app(
         .or(post_transaction_filter)
         .or(get_user_filter)
         .or(casino_list)
+        .or(user_casino)
         .or(get_transaction_filter)
         .or(post_user_filter)
         .recover(handle_rejection)
