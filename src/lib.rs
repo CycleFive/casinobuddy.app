@@ -302,8 +302,6 @@ impl Default for CasinoContext {
     }
 }
 
-
-
 /// Get a user by their id.
 async fn get_user_filter(
     ctx: CasinoContext,
@@ -339,6 +337,7 @@ fn with_transaction_create_params(
 }
 
 /// Post filter for transactions.
+/// `/transaction/{user_id}/{casino_id}`
 async fn transaction_post_filter(
     ctx: CasinoContext,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
@@ -365,6 +364,7 @@ async fn transaction_post_filter(
 }
 
 /// Get casino listing
+/// `/casino`
 async fn casino_list_filter(
     ctx: CasinoContext,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
@@ -380,6 +380,7 @@ async fn casino_list_filter(
 }
 
 /// Get all transactions for a user.
+/// `/transaction/{user_id}`
 async fn transaction_get_filter(
     ctx: CasinoContext,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
@@ -410,6 +411,7 @@ fn with_user_create_params(
 }
 
 /// Post a new user.
+/// `/user POST {'username': 'testuser', 'email': 'testemail'}`
 async fn post_user_filter(
     ctx: CasinoContext,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
