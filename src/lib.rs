@@ -38,7 +38,7 @@ async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
         tracing::error!("sqlx error: {:?}", e);
         Ok(reply::with_status(warp::reply::json(&error::BadRequest), StatusCode::BAD_REQUEST))
     } else {
-        eprintln!("unhandled rejection: {:?}", err);
+        eprintln!("unhandled rejection: {err:?}");
         Ok(reply::with_status(
         warp::reply::json(&error::InternalServerError),
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -123,9 +123,9 @@ pub struct CBUserId {
 
 use serde_json::json;
 
-/// Implementation for [CasinoContext]
+/// Implementation for [`CasinoContext`]
 impl CasinoContext {
-    /// Create a new instance of `[CasinoContext]` given a database pool.
+    /// Create a new instance of [`CasinoContext`] given a database pool.
     fn new(db: PgPool) -> Self {
         Self { db: Arc::new(db) }
     }
@@ -203,7 +203,7 @@ impl CasinoContext {
         // This shouldn't fail because we don't have any constraints on the email or username.
         // Do we want to constrain these in the database?
         // Should be checking for existing users with the same email or username?
-        let _discord_id = "0";
+        // let _discord_id = "0";
         let user_id = sqlx::query_as!(
             CBUserId,
             r#"INSERT INTO "user" (created_at) VALUES (NOW()) RETURNING id"#,
@@ -281,9 +281,9 @@ impl CasinoContext {
         casino_id: Uuid,
         cost: BigDecimal,
         benefit: BigDecimal,
-        notes: &Option<String>,
+        notes: Option<&String>,
     ) -> Result<impl Reply, Rejection> {
-        let transaction = self.create_transaction(user_id, casino_id, cost, benefit, notes.clone()).await.map_err(Sqlx)?;
+        let transaction = self.create_transaction(user_id, casino_id, cost, benefit, notes.cloned()).await.map_err(Sqlx)?;
         Ok(warp::reply::with_status(warp::reply::json(&transaction), StatusCode::CREATED))
     }
 }
@@ -311,7 +311,7 @@ async fn get_user_filter(
     warp::path!("user" / String)
         .and(warp::get())
         .and(context)
-        .and_then(|user_id: String, inner_ctx: CasinoContext| async move {
+        .and_then( |user_id: String, inner_ctx: CasinoContext| async move {
             let user_id = Uuid::parse_str(&user_id).unwrap();
             tracing::info!("Getting user with id: {}", user_id);
             inner_ctx.process_get_user(user_id).await
@@ -326,7 +326,7 @@ struct TransactionCreate {
     casino_id:  String,
     cost:       BigDecimal,
     benefit:    BigDecimal,
-    notes:  Option<String>,
+    notes:      Option<String>,
 }
 
 /// Filter to the transaction create params.
@@ -338,6 +338,7 @@ fn with_transaction_create_params(
 
 /// Post filter for transactions.
 /// `/transaction/{user_id}/{casino_id}`
+#[allow(clippy::unused_async)]
 async fn transaction_post_filter(
     ctx: CasinoContext,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
@@ -357,7 +358,7 @@ async fn transaction_post_filter(
                 with_transaction_create_params(params.clone());
                 inner_ctx
                     .clone()
-                    .process_post_transaction(user_id, casino_id, params.cost, params.benefit, &params.notes)
+                    .process_post_transaction(user_id, casino_id, params.cost, params.benefit, params.notes.as_ref())
                     .await
             },
         )
@@ -381,6 +382,7 @@ async fn casino_list_filter(
 
 /// Get all transactions for a user.
 /// `/transaction/{user_id}`
+#[allow(clippy::unused_async)]
 async fn transaction_get_filter(
     ctx: CasinoContext,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
@@ -412,6 +414,7 @@ fn with_user_create_params(
 
 /// Post a new user.
 /// `/user POST {'username': 'testuser', 'email': 'testemail'}`
+#[allow(clippy::unused_async)]
 async fn post_user_filter(
     ctx: CasinoContext,
 ) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
@@ -458,6 +461,8 @@ async fn get_app(
 }
 
 
+/// # Errors
+/// Will return `Err` if the server fails to start.
 /// Run the server.
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "tracing=info,warp=debug".to_owned());
