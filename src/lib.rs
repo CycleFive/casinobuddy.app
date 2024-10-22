@@ -8,7 +8,7 @@ use warp::{http::StatusCode, reject::Rejection, reply, Filter, Reply};
 pub mod error;
 pub use error::*;
 
-const DEFAULT_DATABASE_URL: &str = "postgresql://casinobuddy_api:mygaypassword@localhost:5432/casinobuddy";
+const DEFAULT_DATABASE_URL: &str = "postgresql://casinobuddy_api:mysecretpassword@localhost:5432/casinobuddy";
 
 /// Custom error type for sqlx errors.
 #[derive(Debug)]

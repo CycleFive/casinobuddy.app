@@ -31,5 +31,5 @@ GROUP BY user_id, casino_id;
 CREATE OR REPLACE VIEW user_casino_name AS SELECT
     user_id,
     casino_id,
-    casino.name AS casino_name,
-FROM user_casino JOIN casino ON user_casino.casino_id = casino.id
+    casino.name AS casino_name
+FROM (user_casino JOIN casino ON user_casino.casino_id = casino.id);
