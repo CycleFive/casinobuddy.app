@@ -12,11 +12,21 @@ env:
 
 jobs:
   build:
-
+    strategy:
+      matrix:
+        rust-version: ["nightly", "stable"]
+        cache-key: [""]
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
+    - name: "Install Rust"
+      run: |
+        rustup toolchain install ${{ matrix.rust-version }} --profile minimal --no-self-update
+        rustup install nightly
+        rustup default ${{ matrix.rust-version }}
+        rustup update
+      shell: bash
     - name: Build
       run: cargo +nightly build --verbose
     - name: Clippy
