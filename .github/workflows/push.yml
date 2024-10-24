@@ -21,6 +21,13 @@ jobs:
     steps:
       # repo checkout
       - uses: actions/checkout@v4
+
+      - name: "Update"
+        run: |
+          sudo apt-get update
+          sudo apt-get dist-upgrade -y
+          sudo apt-get autoremove -y
+
       # Setup Rust
       - name: "Install Rust"
         run: |
@@ -30,9 +37,11 @@ jobs:
           rustup default ${{ matrix.rust-version }}
           rustup update
         shell: bash
+
       # Install sqlx
       - name: Install sqlx-cli
         run: cargo install sqlx-cli --no-default-features --features postgres
+
       # Setup Postgres
       - uses: ikalnytskyi/action-setup-postgres@v4
         with:
@@ -41,6 +50,7 @@ jobs:
           database: casinobuddy
           port: 5432
         id: postgres
+
       # tax misorder
       - uses: Swatinem/rust-cache@v2
         with:
