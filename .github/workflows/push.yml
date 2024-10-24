@@ -25,7 +25,8 @@ jobs:
       - name: "Install Rust"
         run: |
           rustup toolchain install ${{ matrix.rust-version }} --profile minimal --no-self-update
-          rustup install nightly
+          rustup install ${{ matrix.rust-version }}
+          rustup component add rustfmt clippy --toolchain ${{ matrix.rust-version }}
           rustup default ${{ matrix.rust-version }}
           rustup update
         shell: bash
