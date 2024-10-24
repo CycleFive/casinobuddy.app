@@ -6,6 +6,6 @@ async fn main() {
     // TODO: Print some system / config info
     println!("Starting Casino Buddy server...");
     if let Err(e) = run().await {
-        eprintln!("Error: {:?}", e);
+        eprintln!("Error: {e:?}");
     }
 }
