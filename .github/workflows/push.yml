@@ -19,17 +19,46 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-    - name: "Install Rust"
-      run: |
-        rustup toolchain install ${{ matrix.rust-version }} --profile minimal --no-self-update
-        rustup install nightly
-        rustup default ${{ matrix.rust-version }}
-        rustup update
-      shell: bash
-    - name: Build
-      run: cargo +nightly build --verbose
-    - name: Clippy
-      run: cargo +nightly clippy -- -D clippy::all -D warnings --allow clippy::needless_return -W clippy::pedantic --allow dead_code --allow clippy::unused_asyc
-    - name: Run tests
-      run: cargo +nightly test --verbose
+      # repo checkout
+      - uses: actions/checkout@v4
+      # Setup Rust
+      - name: "Install Rust"
+        run: |
+          rustup toolchain install ${{ matrix.rust-version }} --profile minimal --no-self-update
+          rustup install nightly
+          rustup default ${{ matrix.rust-version }}
+          rustup update
+        shell: bash
+      # Install sqlx
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres
+      # Setup Postgres
+      - uses: ikalnytskyi/action-setup-postgres@v4
+        with:
+          username: casinobuddy_api
+          password: mysecretpassword
+          database: casinobuddy
+          port: 5432
+        id: postgres
+      # tax misorder
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ matrix.cache-key }}
+      # Migrate database
+      - name: Migrate database
+        env:
+          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
+          PG_USER: casinobuddy_api
+          PG_PASSWORD: mysecretpassword
+        run: |
+          sqlx database create
+          sqlx migrate run --source migrations
+          cargo sqlx prepare --workspace -- --tests --all
+
+
+      - name: Check
+        run: cargo +nightly check --verbose
+      - name: Clippy
+        run: cargo +nightly clippy -- -D clippy::all -D warnings --allow clippy::needless_return -W clippy::pedantic --allow dead_code --allow clippy::unused_asyc
+      - name: Run tests
+        run: cargo +nightly test --verbose
