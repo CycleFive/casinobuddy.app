@@ -68,12 +68,24 @@ jobs:
 
 
       - name: Check
+        env:
+          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
+          PG_USER: casinobuddy_api
+          PG_PASSWORD: mysecretpassword
         run: cargo check --verbose
       # FIXME: Bug in clippy?
       #- name: Clippy
       #  run: cargo clippy -- -D clippy::all -D warnings -W clippy::pedantic --allow clippy::unused_async
       #  # run: cargo clippy -- -D clippy::all -D warnings -W clippy::pedantic --allow clippy::needless_return --allow dead_code --allow clippy::unused_async --verbose
       - name: Build
+        env:
+          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
+          PG_USER: casinobuddy_api
+          PG_PASSWORD: mysecretpassword
         run: cargo build --verbose
       - name: Run tests
+        env:
+          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
+          PG_USER: casinobuddy_api
+          PG_PASSWORD: mysecretpassword
         run: cargo test --verbose
