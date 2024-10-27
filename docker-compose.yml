@@ -5,9 +5,9 @@ services:
     volumes:
       - casino-pgdata:/var/lib/postgresql/data
     environment:
-      - PGUSER=${POSTGRES_USER:-postgres}
+      - PGUSER=${POSTGRES_USER:-casinobuddy_api}
       - PGPASSWORD=${POSTGRES_PASSWORD:-mysecretpassword}
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_USER=${POSTGRES_USER:-casinobuddy_api}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-mysecretpassword}
       - POSTGRES_DB=${POSTGRES_DB:-casinobuddy}
       - PGDATABASE=${POSTGRES_DB:-casinobuddy}

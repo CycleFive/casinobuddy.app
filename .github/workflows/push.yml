@@ -12,12 +12,80 @@ env:
 
 jobs:
   build:
-
+    strategy:
+      matrix:
+        rust-version: ["nightly", "stable"]
+        cache-key: [""]
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+      # repo checkout
+      - uses: actions/checkout@v4
+
+      - name: "Update"
+        run: |
+          sudo apt-get update
+          sudo apt-get dist-upgrade -y
+          sudo apt-get autoremove -y
+
+      # Setup Rust
+      - name: "Install Rust"
+        run: |
+          rustup toolchain install ${{ matrix.rust-version }} --profile minimal --no-self-update
+          rustup install ${{ matrix.rust-version }}
+          rustup component add rustfmt clippy --toolchain ${{ matrix.rust-version }}
+          rustup default ${{ matrix.rust-version }}
+          rustup update
+        shell: bash
+
+      # Install sqlx
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres
+
+      # Setup Postgres
+      - uses: ikalnytskyi/action-setup-postgres@v4
+        with:
+          username: casinobuddy_api
+          password: mysecretpassword
+          database: casinobuddy
+          port: 5432
+        id: postgres
+
+      # tax misorder
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ matrix.cache-key }}
+      # Migrate database
+      - name: Migrate database
+        env:
+          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
+          PG_USER: casinobuddy_api
+          PG_PASSWORD: mysecretpassword
+        run: |
+          sqlx database create
+          sqlx migrate run --source migrations
+          cargo sqlx prepare --workspace -- --tests --all
+
+
+      - name: Check
+        env:
+          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
+          PG_USER: casinobuddy_api
+          PG_PASSWORD: mysecretpassword
+        run: cargo check --verbose
+      # FIXME: Bug in clippy?
+      #- name: Clippy
+      #  run: cargo clippy -- -D clippy::all -D warnings -W clippy::pedantic --allow clippy::unused_async
+      #  # run: cargo clippy -- -D clippy::all -D warnings -W clippy::pedantic --allow clippy::needless_return --allow dead_code --allow clippy::unused_async --verbose
+      - name: Build
+        env:
+          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
+          PG_USER: casinobuddy_api
+          PG_PASSWORD: mysecretpassword
+        run: cargo build --verbose
+      - name: Run tests
+        env:
+          DATABASE_URL: ${{ steps.postgres.outputs.connection-uri }}
+          PG_USER: casinobuddy_api
+          PG_PASSWORD: mysecretpassword
+        run: cargo test --verbose
